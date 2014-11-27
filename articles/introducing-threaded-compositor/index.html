@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en"
+>
+<head>
+    <title>Introducing Threaded Compositor - YoonLog</title>
+    <!-- Using the latest rendering mode for IE -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+
+<link rel="canonical" href="http://localhost:8000/articles/introducing-threaded-compositor/">
+
+        <meta name="author" content="Gwang Yoon Hwang" />
+        <meta name="keywords" content="WebKitGTK,AcceleratedCompositing,Igalia" />
+        <meta name="description" content="Table of Contents Introduction Roadmap Implement the threaded compositor based on Coordinated Graphics for WebKitGTK+ Design the common layer between Mac (Ui Side Compositing) and ours (Coordinated Graphics) to maximize shared codes. Implement a way to enable Ui Side Compositing in WebKitGTK+ Architecture Off-the-main thread Animation Compositing the Media and ..." />
+
+    <!-- Enable latex plugin -->
+
+
+
+
+    <!-- Bootstrap -->
+        <link rel="stylesheet" href="http://localhost:8000/theme/css/bootstrap.min.css" type="text/css"/>
+    <link href="http://localhost:8000/theme/css/font-awesome.min.css" rel="stylesheet">
+
+    <link href="http://localhost:8000/theme/css/pygments/native.css" rel="stylesheet">
+        <link href="http://localhost:8000/theme/css/typogrify.css" rel="stylesheet">
+    <link rel="stylesheet" href="http://localhost:8000/theme/css/style.css" type="text/css"/>
+
+        <link href="http://localhost:8000/feeds/all.atom.xml" type="application/atom+xml" rel="alternate"
+              title="YoonLog ATOM Feed"/>
+        <link href="http://localhost:8000/feeds/all.rss.xml" type="application/rss+xml" rel="alternate"
+              title="YoonLog RSS Feed"/>
+
+
+        <link href="http://localhost:8000/feeds/webkit.atom.xml" type="application/atom+xml" rel="alternate"
+              title="YoonLog WebKit ATOM Feed"/>
+
+</head>
+<body>
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-ex1-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a href="http://localhost:8000/" class="navbar-brand">
+YoonLog            </a>
+        </div>
+        <div class="collapse navbar-collapse navbar-ex1-collapse">
+            <ul class="nav navbar-nav">
+                         <li><a href="http://localhost:8000/pages/about/">
+                             About
+                          </a></li>
+                        <li class="active">
+                            <a href="http://localhost:8000/category/webkit/">Webkit</a>
+                        </li>
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+                <li><a href="http://localhost:8000/archives.html"><i class="fa fa-th-list"></i><span class="icon-label">Archives</span></a></li>
+            </ul>
+        </div>
+        <!-- /.navbar-collapse -->
+    </div>
+</div> <!-- /.navbar -->
+
+<div class="container">
+    <div class="row">
+        <div class="col-sm-9">
+
+    <section id="content">
+        <article>
+            <header class="page-header">
+                <h1>
+                    <a href="http://localhost:8000/articles/introducing-threaded-compositor/"
+                       rel="bookmark"
+                       title="Permalink to Introducing Threaded Compositor">
+                        Introducing Threaded&nbsp;Compositor
+                    </a>
+                </h1>
+            </header>
+            <div class="entry-content">
+                <div class="panel">
+                    <div class="panel-body">
+<footer class="post-info">
+    <span class="label label-default">Date</span>
+    <span class="published">
+        <i class="fa fa-calendar"></i><time datetime="2014-11-30T10:20:00+09:00"> Sun 30 November 2014</time>
+    </span>
+
+
+
+
+
+
+<span class="label label-default">Tags</span>
+	<a href="http://localhost:8000/tag/webkitgtk/">WebKitGTK</a>
+        /
+	<a href="http://localhost:8000/tag/acceleratedcompositing/">AcceleratedCompositing</a>
+        /
+	<a href="http://localhost:8000/tag/igalia/">Igalia</a>
+    
+</footer><!-- /.post-info -->                    </div>
+                </div>
+                <div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of&nbsp;Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#introduction" id="id1">Introduction</a></li>
+<li><a class="reference internal" href="#roadmap" id="id2">Roadmap</a><ul>
+<li><a class="reference internal" href="#implement-the-threaded-compositor-based-on-coordinated-graphics-for-webkitgtk" id="id3">Implement the threaded compositor based on Coordinated Graphics for&nbsp;WebKitGTK+</a></li>
+<li><a class="reference internal" href="#design-the-common-layer-between-mac-ui-side-compositing-and-ours-coordinated-graphics-to-maximize-shared-codes" id="id4">Design the common layer between Mac (Ui Side Compositing) and ours (Coordinated Graphics) to maximize shared&nbsp;codes.</a></li>
+<li><a class="reference internal" href="#implement-a-way-to-enable-ui-side-compositing-in-webkitgtk" id="id5">Implement a way to enable Ui Side Compositing in&nbsp;WebKitGTK+</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#architecture" id="id6">Architecture</a><ul>
+<li><a class="reference internal" href="#off-the-main-thread-animation" id="id7">Off-the-main thread&nbsp;Animation</a></li>
+<li><a class="reference internal" href="#compositing-the-media-and-the-canvas" id="id8">Compositing the Media and the&nbsp;Canvas</a></li>
+<li><a class="reference internal" href="#scrolling" id="id9">Scrolling</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#strength" id="id10">Strength</a></li>
+<li><a class="reference internal" href="#weakness" id="id11">Weakness</a></li>
+<li><a class="reference internal" href="#performance-expectation" id="id12">Performance&nbsp;expectation</a></li>
+<li><a class="reference internal" href="#deferred-rendering-similar-with-impl-side-painting-in-chromium" id="id13">Deferred Rendering (Similar with Impl-side painting in&nbsp;Chromium)</a></li>
+<li><a class="reference internal" href="#slides" id="id14">Slides</a></li>
+</ul>
+</div>
+<div class="section" id="introduction">
+<h2><a class="toc-backref" href="#id1">Introduction</a></h2>
+<p>The main thread is where everything gets executed, including layout, JavaScript execution, and other heavy operations. Thus, running accelerated compositing in the main thread severely limits responsiveness and rendering speed. By having a separate thread for compositing, we can bring a significant performance improvement in scrolling, zooming, and&nbsp;rendering.</p>
+<p>Currently, several ports have already implemented a way to perform compositing off the main thread. Coordinate Graphics System, which is used by Qt and <span class="caps">EFL</span>, runs accelerated compositing in <span class="caps">UI</span> Process, and Chromium has implemented Compositor Thread that runs off the main render&nbsp;thread.</p>
+<p>Threaded Compositor is a threaded model of Coordinated Graphics System. Unlike Coordinated Graphics System, we composite in the different thread of Web Process by implementing thread communication mechanism to Coordinated Graphics&nbsp;System.</p>
+</div>
+<div class="section" id="roadmap">
+<h2><a class="toc-backref" href="#id2">Roadmap</a></h2>
+<div class="section" id="implement-the-threaded-compositor-based-on-coordinated-graphics-for-webkitgtk">
+<h3><a class="toc-backref" href="#id3">Implement the threaded compositor based on Coordinated Graphics for&nbsp;WebKitGTK+</a></h3>
+<p>It is almost done, it needs 1~2 more&nbsp;weeks.</p>
+</div>
+<div class="section" id="design-the-common-layer-between-mac-ui-side-compositing-and-ours-coordinated-graphics-to-maximize-shared-codes">
+<h3><a class="toc-backref" href="#id4">Design the common layer between Mac (Ui Side Compositing) and ours (Coordinated Graphics) to maximize shared&nbsp;codes.</a></h3>
+<p>There are concerns about the maintenance burden, because there is no active maintainer of Coordinated Graphics in upstream. And we can assume that at some point the <span class="caps">EFL</span> port will be disappeared, so that we will be the only port using Coordinated Graphics + Texture&nbsp;Mapper.</p>
+<p>We need to reduce the maintenance burden, and we can reduce it by sharing codes with Mac&nbsp;Port.</p>
+<p>Apple implemented <span class="caps">UI</span> <span class="caps">SIDE</span> <span class="caps">COMPOSITING</span> for their iOS devices. And they want to enable it on the desktop, too. Basically, it is almost same with what Coordinated Graphics did. So, most of <span class="caps">IPC</span> things and data structures are duplicated. By seperate common an platform specific parts of their implementation, it will be easy to make a common&nbsp;layer.</p>
+<p>I discussed this plan with smfr and weinig in the <span class="caps">WK</span> Contributor&#8217;s meeting, they agreed the general idea, so we can start this step by providng / discussing the proposal with&nbsp;Apple.</p>
+</div>
+<div class="section" id="implement-a-way-to-enable-ui-side-compositing-in-webkitgtk">
+<h3><a class="toc-backref" href="#id5">Implement a way to enable Ui Side Compositing in&nbsp;WebKitGTK+</a></h3>
+<p>After refactoring to share the codes, it is easy to provide a way to select the process where we composite. After that, we can compare these two approaches: compositing in <span class="caps">UI</span> Process and compositing in Web&nbsp;Process.</p>
+<p>Anyway, It is necessary to implement threaded compositor even if we choose the <span class="caps">UI</span> Process to composite. Because the threaded compositor provides a way to composite layers in its dedicate thread. Without it, the main thread of <span class="caps">UI</span> Process will be blocked by compositing operations. (Apple&#8217;s <span class="caps">CA</span> has its own thread to composite, but <span class="caps">EFL</span>&#8217;s implementation runs in the main thread of <span class="caps">UI</span>&nbsp;Process.)</p>
+</div>
+</div>
+<div class="section" id="architecture">
+<h2><a class="toc-backref" href="#id6">Architecture</a></h2>
+<a class="reference external image-reference" href="http://localhost:8000/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png"><img alt="" src="http://localhost:8000/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png" /></a>
+<ul>
+<li><p class="first">Compositing&nbsp;Coordinator</p>
+<blockquote>
+<p>A class takes the responsibility of managing compositing resources in main&nbsp;thread.</p>
+</blockquote>
+</li>
+<li><p class="first">ThreadedCoordinatedCompositor</p>
+<blockquote>
+<p>A compositor class which schedules compositing state&nbsp;changes.</p>
+</blockquote>
+</li>
+<li><p class="first">ThreadedCoordinatedLayerTreeHost</p>
+<blockquote>
+<p>A concrete class of LayerTreeHost for threaded compositor. This class passes <span class="caps">WK2</span> commands to&nbsp;ThreadedCoordinatedCompositor.</p>
+</blockquote>
+</li>
+<li><p class="first">CoordinatedGraphicsScene</p>
+<blockquote>
+<p>A class which has a complete scene graph and rendering functionality. It synchronizes its own scene graph with a graphics layer tree in compositing&nbsp;coordinator.</p>
+</blockquote>
+</li>
+<li><p class="first">CoordinatedCompositingThread</p>
+<blockquote>
+<p>This class manages a dedicated thread for compositing. CoordinatedGraphicsScene runs on a dedicated&nbsp;thread.</p>
+</blockquote>
+</li>
+<li><p class="first">TextureMapperLayer</p>
+<blockquote>
+<p>It has actual properties to render a&nbsp;layer.</p>
+</blockquote>
+</li>
+<li><p class="first">PageViewportController</p>
+<blockquote>
+<p>A class that manages scrolling and&nbsp;zooming.</p>
+</blockquote>
+</li>
+</ul>
+<p>In the main-thread, all of the visual changes of each GraphicsLayer are passed to CompositingCoordinator via CoordinatedGraphicsLayer. And CompositingCoordinator collects state changes from the GraphicsLayer tree when it is requested to do&nbsp;so.</p>
+<p>At this point, Threaded Compositor and Coordinated Graphics behaves&nbsp;differently.</p>
+<p>In Coordinated Graphics, the collected state changes of the layer tree is encoded and passed to CoordinatedLayerTreeHostProxy in UIProcess. And CoordinatedGraphicsScene applies these state changes to its own TextureMapperLayer tree and renders these on the frame&nbsp;buffer.</p>
+<p>But in Threaded Compositor, these state changes are passed to CoordinatedGraphicsScene which owned by CoordinatedCompositingThread. ThreadedCoordinatedCompositor and CoordinatedCompositingThread performs same role as CoordinatedLayerTreeHost and UIProcess respectively. Because CoordinatedCompositingThread has its own RunLoop, all of the actual compositing operations are executed in the dedicated compositing thread in&nbsp;WebProcess.</p>
+<div class="section" id="off-the-main-thread-animation">
+<h3><a class="toc-backref" href="#id7">Off-the-main thread&nbsp;Animation</a></h3>
+<p>As described above section, all of the layer properties (including GraphicsLayerAnimation) are passed to the compositing thread.
+It can make available to run <span class="caps">CSS</span> animations on the compositing thread without interrupting the main thread.
+When CoordinatedGraphicsScene finishes to render a scene, it will check is there any running animations in the its layer tree. If there are active one, It sets a timer to to render a scene itself. ( Current implementation of Coordinated Graphics rely on the main-thread. It should be fixed.&nbsp;)</p>
+<p>Attached sequence diagram can be helpful to understand this&nbsp;idea.</p>
+<a class="reference external image-reference" href="http://localhost:8000/images/articles/Threaded_Compositor_Design_Update_Animation.png"><img alt="" src="http://localhost:8000/images/articles/Threaded_Compositor_Design_Update_Animation.png" /></a>
+</div>
+<div class="section" id="compositing-the-media-and-the-canvas">
+<h3><a class="toc-backref" href="#id8">Compositing the Media and the&nbsp;Canvas</a></h3>
+<p>In the TextureMapper, Media (Plugins, Video element, &#8230;) and Canvas (WebGL, 2D Canvas) can be rendered by implementing TextureMapperPlatformLayer.
+Most important interface of the TextureMapperPlatformLayer is TextureMapperPlatformLayerClient::setPlatformLayerNeedsDisplay which requests the compositor to composite.
+If the actual renderer of Media and Canvas element runs on off-the-main-thread, it is possible to bypass the main thread entirely. if the renderer calls TextureMapperPlatformLayerClient::setPlatformLayerNeedsDisplay from its own thread, updateViewport will be queued on compositing&nbsp;thread.</p>
+<p>If the target platform supports <a class="reference external" href="https://www.khronos.org/registry/egl/extensions/KHR/EGL_KHR_stream_consumer_gltexture.txt">streams of texture</a>, we can also avoid pipeline hazards when drawing video layers in modern mobile GPUs which uses tile based&nbsp;rendering.</p>
+</div>
+<div class="section" id="scrolling">
+<h3><a class="toc-backref" href="#id9">Scrolling</a></h3>
+<p>Current implementation and design of Threaded Compositor needs to interrupt main-thread of WebProcess.
+To bypass main-thread, we need to analyze/apply the Scrolling Coordinator which implemented by&nbsp;Apple.</p>
+<a class="reference external image-reference" href="http://localhost:8000/images/articles/Threaded_Compositor_Design_Scroll.png"><img alt="" src="http://localhost:8000/images/articles/Threaded_Compositor_Design_Scroll.png" /></a>
+</div>
+</div>
+<div class="section" id="strength">
+<h2><a class="toc-backref" href="#id10">Strength</a></h2>
+<ul>
+<li><p class="first">By having a separate thread for compositing, we can off-load OpenGL executions from main-thread of&nbsp;WebProcess.</p>
+<blockquote>
+<ul class="simple">
+<li>Because there is a VSync timing issue, OpenGL executions on main-thread can be blocked almost 16ms in the worst&nbsp;case.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">The performance of <span class="caps">CSS3</span> Animations can be significantly&nbsp;faster.</p>
+<blockquote>
+<ul class="simple">
+<li>Because the layer tree in compositing threads has animations properties of each layers, it can apply/render animations without interrupting&nbsp;main-thread.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">Reuse most of current implementations of TextureMapper / Coordinated&nbsp;Graphics.</p>
+</li>
+<li><p class="first">If the rendering of media/canvas elements can be done in off-the-main-thread, we can bypass entire main-thread during updating the contents of these&nbsp;elements.</p>
+</li>
+<li><p class="first">Unlike Coordinated Graphics or Uber-Compositor, it does not moves OpenGL works to <span class="caps">UI</span>&nbsp;Process.</p>
+<blockquote>
+<ul class="simple">
+<li>Unstability of mobile <span class="caps">GPU</span> can cause a crash to <span class="caps">UI</span> Process if we uses OpenGL things in <span class="caps">UI</span>&nbsp;Process.</li>
+<li>Do not rely on &quot;complicated&quot; inter-process shareable texture&nbsp;mechanism.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">Do not need to encode/decode state&nbsp;changes.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="weakness">
+<h2><a class="toc-backref" href="#id11">Weakness</a></h2>
+<ul>
+<li><p class="first">Consumes too much memory when updating&nbsp;texture.</p>
+<blockquote>
+<ul class="simple">
+<li>RenderObjects draw its contents to UpdateAtlas before uploading texture. It consumes <span class="caps">4MB</span> per&nbsp;atlases.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">Updating texture can cause pipeline hazards in the mobile <span class="caps">GPU</span>.</p>
+<blockquote>
+<ul class="simple">
+<li>Because modern mobile GPUs uses tile-based rendering, it renders multiple frames (~ 3 frames) concurrently. If texSubImage2D updates a texture which using by previous draw call, it blocks the scheduler to avoid data&nbsp;corruption.</li>
+<li>To avoid this problem, chromium uses <a class="reference external" href="http://src.chromium.org/viewvc/chrome/trunk/src/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_texture_mailbox.txt">producer/consumer model of&nbsp;texture</a></li>
+</ul>
+<ul class="simple">
+<li>We can create a wrapper to the texture which provides multiple buffering. In this way we can avoid pipeline&nbsp;hazards.</li>
+</ul>
+</blockquote>
+</li>
+</ul>
+</div>
+<div class="section" id="performance-expectation">
+<h2><a class="toc-backref" href="#id12">Performance&nbsp;expectation</a></h2>
+<p>I presented the performance improvement in Linux.Conf.<span class="caps">AU</span> last year(2013).
+It is based on pretty old implementation but it shows meaningful performance improvement compare to plain TextureMapper solution.
+Also, I think it is okay to share this result since it is already presented to public as a open source&nbsp;activity.</p>
+<ul>
+<li><p class="first">Test&nbsp;Cases</p>
+<blockquote>
+<ul>
+<li><p class="first">leaves&nbsp;n</p>
+<blockquote>
+<ul class="simple">
+<li>Modified the famous accelerated compositing example, <a class="reference external" href="https://www.webkit.org/blog-files/leaves/">WebKit Leaves</a>, to draw n&nbsp;leaves.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">3DCube&nbsp;n</p>
+<blockquote>
+<ul class="simple">
+<li>n cubes rotating using <span class="caps">CSS3</span>&nbsp;animation.</li>
+</ul>
+</blockquote>
+</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">Test&nbsp;Environment</p>
+<blockquote>
+<ul class="simple">
+<li>Prototype of Threaded Compositor Implementation based on&nbsp;r134883</li>
+<li>WebKit2 Gtk+&nbsp;r140386</li>
+<li>Intel Core i5-2400 3.10Ghz, Geforce <span class="caps">GTS450</span>, Ubuntu 12.04&nbsp;x86_64</li>
+</ul>
+</blockquote>
+</li>
+</ul>
+<table border="1" class="docutils">
+<colgroup>
+<col width="19%" />
+<col width="36%" />
+<col width="28%" />
+<col width="17%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">Tests</th>
+<th class="head">ThreadedCompositor (fps)</th>
+<th class="head">WebKit2 Gtk+ (fps)</th>
+<th class="head">Improved %</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td><a class="reference external" href="http://black.company100.com/test/TC/leaves500NoDelay/">leaves500</a></td>
+<td>58.96</td>
+<td>35.86</td>
+<td>64.42</td>
+</tr>
+<tr><td><a class="reference external" href="http://black.company100.com/test/TC/leaves1000NoDelay/">leaves1000</a></td>
+<td>58.98</td>
+<td>25.88</td>
+<td>127.90</td>
+</tr>
+<tr><td><a class="reference external" href="http://black.company100.com/test/TC/leaves2000NoDelay/">leaves2000</a></td>
+<td>32.98</td>
+<td>18.04</td>
+<td>82.82</td>
+</tr>
+<tr><td><a class="reference external" href="http://black.company100.com/test/TC/3DCube360NoDelay/">3DCube360</a></td>
+<td>57.27</td>
+<td>32.09</td>
+<td>78.47</td>
+</tr>
+<tr><td><a class="reference external" href="http://black.company100.com/test/TC/3DCube640NoDelay/">3DCube640</a></td>
+<td>33.64</td>
+<td>23.52</td>
+<td>43.03</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="deferred-rendering-similar-with-impl-side-painting-in-chromium">
+<h2><a class="toc-backref" href="#id13">Deferred Rendering (Similar with Impl-side painting in&nbsp;Chromium)</a></h2>
+<ul>
+<li><p class="first">We can apply deferred rendering technic&nbsp;also.</p>
+<blockquote>
+<ul class="simple">
+<li>Rasterization of each elements can be done in its dedicated&nbsp;thread.</li>
+<li>In the main-thread, CoordinatedTile records cairo commands using cairo_recording_surface, instead draws on actual&nbsp;UpdateAtlas.</li>
+<li>The rasterizing-thread playback the recorded cairo_surface onto UpdateAtlases. And it passes update infos to the compositing&nbsp;thread.</li>
+</ul>
+</blockquote>
+</li>
+</ul>
+</div>
+<div class="section" id="slides">
+<h2><a class="toc-backref" href="#id14">Slides</a></h2>
+<ul class="simple">
+<li><a class="reference external" href="https://docs.google.com/presentation/d/1V8Z8tYXOxBMI0cxPfojfClypI64fwTRj24lkALfSq0o/pub?start=false&amp;loop=false&amp;delayms=3000">Implementing Threaded Compositor : Igalia. Lightning&nbsp;Talk</a></li>
+</ul>
+</div>
+
+            </div>
+            <!-- /.entry-content -->
+        </article>
+    </section>
+
+        </div>
+        <div class="col-sm-3 well well-sm" id="sidebar">
+
+<aside>
+    <section>
+        <ul class="list-group list-group-flush">
+                <li class="list-group-item"><h4><i class="fa fa-home fa-lg"></i><span class="icon-label">Social</span></h4>
+                  <ul class="list-group" id="social">
+                    <li class="list-group-item"><a href="http://kr.linkedin.com/pub/gwang-yoon-hwang/23/45/b10"><i class="fa fa-linkedin-square fa-lg"></i> linkedin</a></li>
+                    <li class="list-group-item"><a href="http://github.com/ryumiel"><i class="fa fa-github-square fa-lg"></i> github</a></li>
+                  </ul>
+                </li>
+
+
+
+                <li class="list-group-item"><a href="http://localhost:8000/tags/"><h4><i class="fa fa-tags fa-lg"></i><span class="icon-label">Tags</span></h4></a>
+                    <ul class="list-group " id="tags">
+                        <li class="list-group-item tag-4">
+                            <a href="http://localhost:8000/tag/acceleratedcompositing/">
+                                AcceleratedCompositing
+                            </a>
+                        </li>
+                        <li class="list-group-item tag-4">
+                            <a href="http://localhost:8000/tag/igalia/">
+                                Igalia
+                            </a>
+                        </li>
+                        <li class="list-group-item tag-4">
+                            <a href="http://localhost:8000/tag/webkitgtk/">
+                                WebKitGTK
+                            </a>
+                        </li>
+                    </ul>
+                </li>    
+
+
+    <li class="list-group-item"><h4><i class="fa fa-external-link-square fa-lg"></i><span class="icon-label">Links</span></h4>
+      <ul class="list-group" id="links">
+        <li class="list-group-item">
+            <a href="http://www.igalia.com" target="_blank">
+                Igalia
+            </a>
+        </li>
+        <li class="list-group-item">
+            <a href="http://www.webkit.org" target="_blank">
+                WebKit
+            </a>
+        </li>
+        <li class="list-group-item">
+            <a href="http://planet.igalia.com" target="_blank">
+                Planet Igalia
+            </a>
+        </li>
+      </ul>
+    </li>
+
+        </ul>
+    </section>
+
+</aside>        </div>
+    </div>
+</div>
+<footer>
+   <div class="container">
+      <hr>
+      <div class="row">
+         <div class="col-xs-10">&copy; 2014 Gwang Yoon Hwang
+            &middot; Powered by <a href="https://github.com/DandyDev/pelican-bootstrap3" target="_blank">pelican-bootstrap3</a>,
+            <a href="http://docs.getpelican.com/" target="_blank">Pelican</a>,
+            <a href="http://getbootstrap.com" target="_blank">Bootstrap</a>         </div>
+         <div class="col-xs-2"><p class="pull-right"><i class="fa fa-arrow-up"></i> <a href="#">Back to top</a></p></div>
+      </div>
+   </div>
+</footer>
+<script src="http://localhost:8000/theme/js/jquery.min.js"></script>
+
+<!-- Include all compiled plugins (below), or include individual files as needed -->
+<script src="http://localhost:8000/theme/js/bootstrap.min.js"></script>
+
+<!-- Enable responsive features in IE8 with Respond.js (https://github.com/scottjehl/Respond) -->
+<script src="http://localhost:8000/theme/js/respond.min.js"></script>
+
+</body>
+</html>
