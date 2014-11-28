@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>YoonLog</title><link href="http://localhost:8000/" rel="alternate"></link><link href="http://localhost:8000/feeds/webkit.atom.xml" rel="self"></link><id>http://localhost:8000/</id><updated>2014-11-30T10:20:00+09:00</updated><entry><title>Introducing Threaded Compositor</title><link href="http://localhost:8000/articles/introducing-threaded-compositor/" rel="alternate"></link><updated>2014-11-30T10:20:00+09:00</updated><author><name>Gwang Yoon Hwang</name></author><id>tag:localhost:8000,2014-11-30:articles/introducing-threaded-compositor/</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>YoonLog</title><link href="http://blog.ryumiel.net/" rel="alternate"></link><link href="http://blog.ryumiel.net/feeds/webkit.atom.xml" rel="self"></link><id>http://blog.ryumiel.net/</id><updated>2014-11-30T10:20:00+09:00</updated><entry><title>Introducing Threaded Compositor</title><link href="http://blog.ryumiel.net/articles/introducing-threaded-compositor/" rel="alternate"></link><updated>2014-11-30T10:20:00+09:00</updated><author><name>Gwang Yoon Hwang</name></author><id>tag:blog.ryumiel.net,2014-11-30:articles/introducing-threaded-compositor/</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of&amp;nbsp;Contents&lt;/p&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;&lt;a class="reference internal" href="#introduction" id="id1"&gt;Introduction&lt;/a&gt;&lt;/li&gt;
@@ -49,26 +49,33 @@
 &lt;/div&gt;
 &lt;div class="section" id="architecture"&gt;
 &lt;h2&gt;&lt;a class="toc-backref" href="#id6"&gt;Architecture&lt;/a&gt;&lt;/h2&gt;
-&lt;a class="reference external image-reference" href="http://localhost:8000/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png"&gt;&lt;img alt="" src="http://localhost:8000/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png" /&gt;&lt;/a&gt;
+&lt;a class="reference external image-reference" href="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png"&gt;&lt;img alt="" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png" /&gt;&lt;/a&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;p class="first"&gt;Compositing&amp;nbsp;Coordinator&lt;/p&gt;
+&lt;li&gt;&lt;p class="first"&gt;CompositingCoordinator&lt;/p&gt;
 &lt;blockquote&gt;
 &lt;p&gt;A class takes the responsibility of managing compositing resources in main&amp;nbsp;thread.&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;p class="first"&gt;ThreadedCoordinatedCompositor&lt;/p&gt;
+&lt;li&gt;&lt;p class="first"&gt;ThreadedCompositor&lt;/p&gt;
 &lt;blockquote&gt;
-&lt;p&gt;A compositor class which schedules compositing state&amp;nbsp;changes.&lt;/p&gt;
+&lt;p&gt;Implements a compositor which runs on the created thread. It owns
+ViewportController and CoordinatedGraphicsScene to render scene on the
+actual&amp;nbsp;surface.&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;p class="first"&gt;ThreadedCoordinatedLayerTreeHost&lt;/p&gt;
 &lt;blockquote&gt;
-&lt;p&gt;A concrete class of LayerTreeHost for threaded compositor. This class passes &lt;span class="caps"&gt;WK2&lt;/span&gt; commands to&amp;nbsp;ThreadedCoordinatedCompositor.&lt;/p&gt;
+&lt;p&gt;A concrete class of LayerTreeHost and CompositingCoordinator::Client for threaded&amp;nbsp;compositor.&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;p class="first"&gt;CoordinatedGraphicsScene&lt;/p&gt;
 &lt;blockquote&gt;
 &lt;p&gt;A class which has a complete scene graph and rendering functionality. It synchronizes its own scene graph with a graphics layer tree in compositing&amp;nbsp;coordinator.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;ThreadSafeCoordinatedSurface&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Implements a surface using ImageBuffer as a backend to use in the Web&amp;nbsp;Process.&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;p class="first"&gt;CoordinatedCompositingThread&lt;/p&gt;
@@ -81,9 +88,9 @@
 &lt;p&gt;It has actual properties to render a&amp;nbsp;layer.&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;p class="first"&gt;PageViewportController&lt;/p&gt;
+&lt;li&gt;&lt;p class="first"&gt;ViewportController&lt;/p&gt;
 &lt;blockquote&gt;
-&lt;p&gt;A class that manages scrolling and&amp;nbsp;zooming.&lt;/p&gt;
+&lt;p&gt;This class is responsible to handle scale factor and scrolling position in the compositing&amp;nbsp;thread.&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;/li&gt;
 &lt;/ul&gt;
@@ -97,7 +104,7 @@
 It can make available to run &lt;span class="caps"&gt;CSS&lt;/span&gt; animations on the compositing thread without interrupting the main thread.
 When CoordinatedGraphicsScene finishes to render a scene, it will check is there any running animations in the its layer tree. If there are active one, It sets a timer to to render a scene itself. ( Current implementation of Coordinated Graphics rely on the main-thread. It should be fixed.&amp;nbsp;)&lt;/p&gt;
 &lt;p&gt;Attached sequence diagram can be helpful to understand this&amp;nbsp;idea.&lt;/p&gt;
-&lt;a class="reference external image-reference" href="http://localhost:8000/images/articles/Threaded_Compositor_Design_Update_Animation.png"&gt;&lt;img alt="" src="http://localhost:8000/images/articles/Threaded_Compositor_Design_Update_Animation.png" /&gt;&lt;/a&gt;
+&lt;a class="reference external image-reference" href="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Update_Animation.png"&gt;&lt;img alt="" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Update_Animation.png" /&gt;&lt;/a&gt;
 &lt;/div&gt;
 &lt;div class="section" id="compositing-the-media-and-the-canvas"&gt;
 &lt;h3&gt;&lt;a class="toc-backref" href="#id8"&gt;Compositing the Media and the&amp;nbsp;Canvas&lt;/a&gt;&lt;/h3&gt;
@@ -110,7 +117,7 @@ If the actual renderer of Media and Canvas element runs on off-the-main-thread, 
 &lt;h3&gt;&lt;a class="toc-backref" href="#id9"&gt;Scrolling&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;Current implementation and design of Threaded Compositor needs to interrupt main-thread of WebProcess.
 To bypass main-thread, we need to analyze/apply the Scrolling Coordinator which implemented by&amp;nbsp;Apple.&lt;/p&gt;
-&lt;a class="reference external image-reference" href="http://localhost:8000/images/articles/Threaded_Compositor_Design_Scroll.png"&gt;&lt;img alt="" src="http://localhost:8000/images/articles/Threaded_Compositor_Design_Scroll.png" /&gt;&lt;/a&gt;
+&lt;a class="reference external image-reference" href="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Scroll.png"&gt;&lt;img alt="" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Scroll.png" /&gt;&lt;/a&gt;
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="strength"&gt;

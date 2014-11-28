@@ -4,66 +4,66 @@ xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitem
 xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 
 <url>
-<loc>http://localhost:8000/index.html</loc>
-<lastmod>2014-11-27T12:55:36-00:00</lastmod>
+<loc>http://blog.ryumiel.net/index.html</loc>
+<lastmod>2014-11-28T11:54:22-00:00</lastmod>
 <changefreq>daily</changefreq>
-<priority>0.5</priority>
+<priority>0.8</priority>
 </url>
 
 <url>
-<loc>http://localhost:8000/archives.html</loc>
-<lastmod>2014-11-27T12:55:36-00:00</lastmod>
+<loc>http://blog.ryumiel.net/archives.html</loc>
+<lastmod>2014-11-28T11:54:22-00:00</lastmod>
 <changefreq>daily</changefreq>
-<priority>0.5</priority>
+<priority>0.8</priority>
 </url>
 
 <url>
-<loc>http://localhost:8000/categories.html</loc>
-<lastmod>2014-11-27T12:55:36-00:00</lastmod>
+<loc>http://blog.ryumiel.net/categories.html</loc>
+<lastmod>2014-11-28T11:54:22-00:00</lastmod>
 <changefreq>daily</changefreq>
-<priority>0.5</priority>
+<priority>0.8</priority>
 </url>
 
 <url>
-<loc>http://localhost:8000/pages/about/</loc>
+<loc>http://blog.ryumiel.net/pages/about/</loc>
 <lastmod>2014-11-27T14:20:00+09:00</lastmod>
-<changefreq>monthly</changefreq>
-<priority>0.5</priority>
+<changefreq>weekly</changefreq>
+<priority>0.9</priority>
 </url>
 
 <url>
-<loc>http://localhost:8000/articles/introducing-threaded-compositor/</loc>
+<loc>http://blog.ryumiel.net/articles/introducing-threaded-compositor/</loc>
 <lastmod>2014-11-30T10:20:00+09:00</lastmod>
-<changefreq>monthly</changefreq>
-<priority>0.5</priority>
+<changefreq>daily</changefreq>
+<priority>1</priority>
 </url>
 
 <url>
-<loc>http://localhost:8000/category/webkit/</loc>
+<loc>http://blog.ryumiel.net/category/webkit/</loc>
 <lastmod>2014-11-30T10:20:00+08:28</lastmod>
 <changefreq>daily</changefreq>
-<priority>0.5</priority>
+<priority>0.8</priority>
 </url>
 
 <url>
-<loc>http://localhost:8000/tag/webkitgtk/</loc>
+<loc>http://blog.ryumiel.net/tag/webkitgtk/</loc>
 <lastmod>2014-11-30T10:20:00+08:28</lastmod>
 <changefreq>daily</changefreq>
-<priority>0.5</priority>
+<priority>0.8</priority>
 </url>
 
 <url>
-<loc>http://localhost:8000/tag/acceleratedcompositing/</loc>
+<loc>http://blog.ryumiel.net/tag/acceleratedcompositing/</loc>
 <lastmod>2014-11-30T10:20:00+08:28</lastmod>
 <changefreq>daily</changefreq>
-<priority>0.5</priority>
+<priority>0.8</priority>
 </url>
 
 <url>
-<loc>http://localhost:8000/tag/igalia/</loc>
+<loc>http://blog.ryumiel.net/tag/igalia/</loc>
 <lastmod>2014-11-30T10:20:00+08:28</lastmod>
 <changefreq>daily</changefreq>
-<priority>0.5</priority>
+<priority>0.8</priority>
 </url>
 
 </urlset>
