@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en"
+>
+<head>
+    <title>Introducing Threaded Compositor - YoonLog</title>
+    <!-- Using the latest rendering mode for IE -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+
+<link rel="canonical" href="http://blog.ryumiel.net/drafts/introducing-threaded-compositor.html">
+
+        <meta name="author" content="Gwang Yoon Hwang" />
+        <meta name="keywords" content="WebKitGTK+,AcceleratedCompositing,Igalia" />
+        <meta name="description" content="Recently, I just finished stabilizing and refactoring the Threaded Compositor implementation. Before starting the upstreaming process via this master bug, it would be good to explain the overview of this implementation to help someone who interested in this. The example used in this video can be accessed from here. I ..." />
+
+    <!-- Enable latex plugin -->
+
+
+
+
+    <!-- Bootstrap -->
+        <link rel="stylesheet" href="http://blog.ryumiel.net/theme/css/bootstrap.min.css" type="text/css"/>
+    <link href="http://blog.ryumiel.net/theme/css/font-awesome.min.css" rel="stylesheet">
+
+    <link href="http://blog.ryumiel.net/theme/css/pygments/native.css" rel="stylesheet">
+        <link href="http://blog.ryumiel.net/theme/css/typogrify.css" rel="stylesheet">
+    <link rel="stylesheet" href="http://blog.ryumiel.net/theme/css/style.css" type="text/css"/>
+
+        <link href="http://blog.ryumiel.net/feeds/all.atom.xml" type="application/atom+xml" rel="alternate"
+              title="YoonLog ATOM Feed"/>
+        <link href="http://blog.ryumiel.net/feeds/all.rss.xml" type="application/rss+xml" rel="alternate"
+              title="YoonLog RSS Feed"/>
+
+
+        <link href="http://blog.ryumiel.net/feeds/webkit.atom.xml" type="application/atom+xml" rel="alternate"
+              title="YoonLog WebKit ATOM Feed"/>
+
+</head>
+<body>
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-ex1-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a href="http://blog.ryumiel.net/" class="navbar-brand">
+YoonLog            </a>
+        </div>
+        <div class="collapse navbar-collapse navbar-ex1-collapse">
+            <ul class="nav navbar-nav">
+                         <li><a href="http://blog.ryumiel.net/pages/about/">
+                             About
+                          </a></li>
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+                <li><a href="http://blog.ryumiel.net/archives.html"><i class="fa fa-th-list"></i><span class="icon-label">Archives</span></a></li>
+            </ul>
+        </div>
+        <!-- /.navbar-collapse -->
+    </div>
+</div> <!-- /.navbar -->
+
+<div class="container">
+    <div class="row">
+        <div class="col-sm-9">
+
+    <section id="content">
+        <article>
+            <header class="page-header">
+                <h1>
+                    <a href="http://blog.ryumiel.net/drafts/introducing-threaded-compositor.html"
+                       rel="bookmark"
+                       title="Permalink to Introducing Threaded Compositor">
+                        Introducing Threaded&nbsp;Compositor
+                    </a>
+                </h1>
+            </header>
+            <div class="entry-content">
+                <div class="panel">
+                    <div class="panel-body">
+<footer class="post-info">
+    <span class="label label-default">Date</span>
+    <span class="published">
+        <i class="fa fa-calendar"></i><time datetime="2014-11-29T10:20:00+09:00"> Sat 29 November 2014</time>
+    </span>
+
+
+
+
+
+
+<span class="label label-default">Tags</span>
+	<a href="http://blog.ryumiel.net/tag/webkitgtk/">WebKitGTK+</a>
+        /
+	<a href="http://blog.ryumiel.net/tag/acceleratedcompositing/">AcceleratedCompositing</a>
+        /
+	<a href="http://blog.ryumiel.net/tag/igalia/">Igalia</a>
+    
+</footer><!-- /.post-info -->                    </div>
+                </div>
+                <p>Recently, I just finished stabilizing and refactoring the Threaded Compositor&nbsp;implementation.</p>
+<p>Before starting the upstreaming process via <a class="reference external" href="https://bugs.webkit.org/show_bug.cgi?id=118265">this master bug</a>, it would be good to explain the overview of this implementation to help someone who interested in&nbsp;this.</p>
+<div class="vimeo" align="center"><iframe width="420" height="315" src="https://player.vimeo.com/video/113084228" frameborder="0"></iframe></div><p>The example used in this video can be accessed from <a class="reference external" href="http://ryumiel.github.io/spread">here</a>.
+I modified the <a class="reference external" href="http://github.com/MathiasPaumgarten/spread">original version</a> to run automatically for benchmarking&nbsp;purpose.</p>
+<p>Also, the current implementation of Threaded Compositor is available on the <a class="reference external" href="http://github.com/ryumiel/webkit-experimental/tree/threaded-compositor">github</a>. It is based on the WebKit&nbsp;r176538.</p>
+<div class="section" id="motivation">
+<h2>Motivation</h2>
+<p>The main-thread is where everything gets executed, including layout, JavaScript execution, and other heavy operations. Thus, running accelerated compositing in the main-thread severely limits responsiveness and rendering performance. By having a separate thread for compositing, we can bring a significant performance improvement in scrolling, zooming, and&nbsp;rendering.</p>
+<p>Currently, several ports have already implemented a way to perform compositing off the main-thread. Coordinate Graphics System, which is used by Qt and <span class="caps">EFL</span>, runs accelerated compositing in <span class="caps">UI</span> Process, and Chromium has implemented Compositor Thread that runs off the main render&nbsp;thread.</p>
+<p>Threaded Compositor is a threaded model of Coordinated Graphics System. Unlike Coordinated Graphics System, this composites in the different thread of Web Process by implementing thread communication mechanism to Coordinated Graphics&nbsp;System.</p>
+<div class="section" id="off-the-main-thread-animation">
+<h3>Off-the-main thread&nbsp;Animation</h3>
+<p>All of the layer properties (including GraphicsLayerAnimation) are passed to the compositing thread.
+It can make available to run <span class="caps">CSS</span> animations on the compositing thread without interrupting the main-thread.
+When CoordinatedGraphicsScene finishes to render a scene, it will check is there any running animations in the its layer tree. If there are active one, It sets a timer to to render a scene&nbsp;itself.</p>
+<p>Attached sequence diagram can be helpful to understand this&nbsp;idea.</p>
+<a class="reference external image-reference" href="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Update_Animation.png"><img alt="A sequence diagram of the updating animation in the Threaded Compositor" class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Update_Animation.png" /></a>
+</div>
+<div class="section" id="scrolling">
+<h3>Scrolling</h3>
+<p>Scrolling and Scaling are also expensive job especially in the embedded&nbsp;device.</p>
+<p>When scrolling events are requested from <span class="caps">UI</span> Process, the ThreadedCompositor scrolls a view with cached tiles to minimize the latency of the scrolling.
+During the ThreadedCompositor renders a scene, the main-thread scrolls &quot;actual&quot; view. Whenever the main-thread finishes &quot;actual&quot; scroll, these changes are collected by CompositingCoordinator. And these changes are passed to the ThreadedCompositor to update the&nbsp;view.</p>
+<p>Unfortunately, this optimization is only supported when we are using fixed layout. To support this, we need to refactor TILED_BACKING_STORE in WebKit and implement proper overlay scrollbars in&nbsp;WebKitGTK+.</p>
+<a class="reference external image-reference" href="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Scroll.png"><img alt="A simplified sequence diagram of the scrolling in the Threaded Compositor" class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Scroll.png" /></a>
+</div>
+<div class="section" id="compositing-the-media-and-the-canvas">
+<h3>Compositing the Media and the&nbsp;Canvas</h3>
+<p>Not only <span class="caps">CSS3</span> Animation and scrolling but also the video and canvas can be accelerated by Threaded Compositor.
+Because it is little bit out of scope of this post, I&#8217;ll only describe about it briefly&nbsp;here.</p>
+<p>In the TextureMapper, Media (Plugins, Video element, &#8230;) and Canvas (WebGL, 2D Canvas) can be rendered by implementing TextureMapperPlatformLayer. Most important interface of the TextureMapperPlatformLayer is TextureMapperPlatformLayerClient::setPlatformLayerNeedsDisplay which requests the compositor to composite the its&nbsp;contents.</p>
+<p>If the actual renderer of a Media and a Canvas element runs on off-the-main-thread, it is possible to bypass the main-thread entirely. The renderer can calls TextureMapperPlatformLayerClient::setPlatformLayerNeedsDisplay when it updates its result from its own thread. And compositing thread will composite the result without using the&nbsp;main-thread.</p>
+<p>Also, if the target platform supports <a class="reference external" href="https://www.khronos.org/registry/egl/extensions/KHR/EGL_KHR_stream_consumer_gltexture.txt">streams of texture</a>, we can avoid pipeline hazards when drawing video layers in modern mobile GPUs which uses tile based&nbsp;rendering.</p>
+</div>
+</div>
+<div class="section" id="performance-expectation">
+<h2>Performance&nbsp;expectation</h2>
+<p>This performance comparison was presented in Linux.Conf.<span class="caps">AU</span> 2013.
+It is based on pretty old implementation but it shows meaningful performance improvement compare to plain TextureMapper&nbsp;method.</p>
+<ul>
+<li><p class="first">Test Cases <a class="footnote-reference" href="#id2" id="id1">[*]</a></p>
+<blockquote>
+<ul>
+<li><p class="first">leaves&nbsp;n</p>
+<blockquote>
+<ul class="simple">
+<li>Modified the famous accelerated compositing example, <a class="reference external" href="https://www.webkit.org/blog-files/leaves/">WebKit Leaves</a>, to draw n&nbsp;leaves.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">3DCube&nbsp;n</p>
+<blockquote>
+<ul class="simple">
+<li>n cubes rotating using <span class="caps">CSS3</span>&nbsp;animation.</li>
+</ul>
+</blockquote>
+</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">Test&nbsp;Environment</p>
+<blockquote>
+<ul class="simple">
+<li>Prototype of Threaded Compositor Implementation based on&nbsp;r134883</li>
+<li>WebKit2 Gtk+&nbsp;r140386</li>
+<li>Intel Core i5-2400 3.10Ghz, Geforce <span class="caps">GTS450</span>, Ubuntu 12.04&nbsp;x86_64</li>
+</ul>
+</blockquote>
+</li>
+</ul>
+<table border="1" class="docutils">
+<colgroup>
+<col width="19%" />
+<col width="36%" />
+<col width="28%" />
+<col width="17%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">Tests</th>
+<th class="head">ThreadedCompositor (fps)</th>
+<th class="head">WebKit2 Gtk+ (fps)</th>
+<th class="head">Improved %</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td><a class="reference external" href="http://black.company100.com/test/TC/leaves500NoDelay/">leaves500</a></td>
+<td>58.96</td>
+<td>35.86</td>
+<td>64.42</td>
+</tr>
+<tr><td><a class="reference external" href="http://black.company100.com/test/TC/leaves1000NoDelay/">leaves1000</a></td>
+<td>58.98</td>
+<td>25.88</td>
+<td>127.90</td>
+</tr>
+<tr><td><a class="reference external" href="http://black.company100.com/test/TC/leaves2000NoDelay/">leaves2000</a></td>
+<td>32.98</td>
+<td>18.04</td>
+<td>82.82</td>
+</tr>
+<tr><td><a class="reference external" href="http://black.company100.com/test/TC/3DCube360NoDelay/">3DCube360</a></td>
+<td>57.27</td>
+<td>32.09</td>
+<td>78.47</td>
+</tr>
+<tr><td><a class="reference external" href="http://black.company100.com/test/TC/3DCube640NoDelay/">3DCube640</a></td>
+<td>33.64</td>
+<td>23.52</td>
+<td>43.03</td>
+</tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="id2" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[*]</a></td><td>These tests are made by <a class="reference external" href="http://company100.com">Company 100</a></td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="architecture">
+<h2>Architecture</h2>
+<a class="reference external image-reference" href="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png"><img alt="A class diagram of the Threaded Compositor" class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png" /></a>
+<ul>
+<li><p class="first">CompositingCoordinator</p>
+<blockquote>
+<p>A class takes the responsibility of managing compositing resources in the&nbsp;main-thread.</p>
+</blockquote>
+</li>
+<li><p class="first">ThreadedCompositor</p>
+<blockquote>
+<p>This class has a dedicate thread for compositing. It owns ViewportController and CoordinatedGraphicsScene to render scene on the actual&nbsp;surface.</p>
+</blockquote>
+</li>
+<li><p class="first">ThreadedCoordinatedLayerTreeHost</p>
+<blockquote>
+<p>A concrete class of LayerTreeHost and CompositingCoordinator::Client for CoordinatedGraphics. And it has ThreadedCompositor to use the threaded&nbsp;compositor.</p>
+</blockquote>
+</li>
+<li><p class="first">CoordinatedGraphicsScene</p>
+<blockquote>
+<p>A class which has a complete scene graph and rendering functionality. It synchronizes its own scene graph with a graphics layer tree in compositing&nbsp;coordinator.</p>
+</blockquote>
+</li>
+<li><p class="first">ThreadSafeCoordinatedSurface</p>
+<blockquote>
+<p>This class implements a surface using ImageBuffer as a backend to use in the Web&nbsp;Process.</p>
+</blockquote>
+</li>
+<li><p class="first">TextureMapperLayer</p>
+<blockquote>
+<p>It has actual properties to render a&nbsp;layer.</p>
+</blockquote>
+</li>
+<li><p class="first">ViewportController</p>
+<blockquote>
+<p>This class is responsible to handle scale factor and scrolling position in the compositing&nbsp;thread.</p>
+</blockquote>
+</li>
+</ul>
+<p>In the main-thread, all of the visual changes of each GraphicsLayer are passed to CompositingCoordinator via CoordinatedGraphicsLayer. And CompositingCoordinator collects state changes from the GraphicsLayer tree when it is requested to do&nbsp;so.</p>
+<p>From this point, Threaded Compositor and Coordinated Graphics behaves&nbsp;differently.</p>
+<p>In Coordinated Graphics, the collected state changes of the layer tree is encoded and passed to CoordinatedLayerTreeHostProxy in UIProcess. And CoordinatedGraphicsScene applies these state changes to its own TextureMapperLayer tree and renders these on the frame&nbsp;buffer.</p>
+<p>But in Threaded Compositor, these states are passed to CoordinatedGraphicsScene which owned by ThreadedCompositor. ThreadedCompositor has its own RunLoop and thread, all of the actual compositing operations are executed in the dedicated compositing thread in Web&nbsp;Process.</p>
+</div>
+<div class="section" id="strength">
+<h2>Strength</h2>
+<ul>
+<li><p class="first">By having a separate thread for compositing, we can off-load OpenGL executions from the main-thread of Web&nbsp;Process.</p>
+<blockquote>
+<ul class="simple">
+<li>The VSync timing issue can block OpenGL executions almost 16 ms in the worst case. We need to avoid this&nbsp;situation.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">The performance of <span class="caps">CSS3</span> Animations can be significantly&nbsp;faster.</p>
+<blockquote>
+<ul class="simple">
+<li>Because the layer tree in the compositing thread has own animations properties which is copied from the main-thread, it can apply and render animations without interrupting the&nbsp;main-thread.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">Reuse most of current implementations of the Texture Mapper / Coordinated&nbsp;Graphics.</p>
+</li>
+<li><p class="first">If the rendering of media and canvas elements can be done in off-the-main-thread, we can bypass entire main-thread during updating the contents of these&nbsp;elements.</p>
+</li>
+<li><p class="first">Unlike Coordinated Graphics or Uber-Compositor, it does not moves OpenGL works to <span class="caps">UI</span>&nbsp;Process.</p>
+<blockquote>
+<ul class="simple">
+<li>Unstability of mobile <span class="caps">GPU</span> can cause a crash to <span class="caps">UI</span> Process if we uses OpenGL things in <span class="caps">UI</span>&nbsp;Process.</li>
+<li>Do not rely on &quot;complicated&quot; inter-process shareable texture&nbsp;mechanism.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">Do not need to encode / decode for each state&nbsp;changes.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="weakness-a-k-a-things-to-do">
+<h2>Weakness (a.k.a. things to&nbsp;do)</h2>
+<ul>
+<li><p class="first">Consumes too much memory when updating&nbsp;texture.</p>
+<blockquote>
+<ul class="simple">
+<li>RenderObjects draw its contents to UpdateAtlas before uploading texture. It consumes <span class="caps">4MB</span> per an update atlas. It is a problem of current Coordinated Graphics, but we need to improve&nbsp;it.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">Updating texture can cause pipeline hazards in the mobile <span class="caps">GPU</span>.</p>
+<blockquote>
+<ul class="simple">
+<li>Modern mobile GPUs uses tile-based [deferred] rendering. It renders multiple frames (~ 3 frames) concurrently. If texSubImage2D updates a texture which is using by previous draw call, it blocks the scheduler to avoid data&nbsp;corruption.</li>
+<li>To avoid this problem, chromium uses <a class="reference external" href="http://src.chromium.org/viewvc/chrome/trunk/src/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_texture_mailbox.txt">producer/consumer model of&nbsp;texture</a></li>
+</ul>
+<ul class="simple">
+<li>We can create a wrapper for a texture which provides multiple buffering. In this way we can avoid the pipeline&nbsp;hazards.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">To reduce the maintenance burden, we need to refactor Coordinated Graphics to share codes with Apple&#8217;s <span class="caps">UI</span> <span class="caps">SIDE</span> <span class="caps">COMPOSITING</span>&nbsp;codes.</p>
+<blockquote>
+<ul class="simple">
+<li>Most of messages are duplicated. So it can be easily done by defining platform specific&nbsp;parts.</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">To render video elements, it uses the main-thread. It can be improved easily as I described at <a class="reference internal" href="#compositing-the-media-and-the-canvas">Compositing the Media and the Canvas</a>.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="slides">
+<h2>Slides</h2>
+<ul class="simple">
+<li><a class="reference external" href="https://docs.google.com/presentation/d/1V8Z8tYXOxBMI0cxPfojfClypI64fwTRj24lkALfSq0o/pub?start=false&amp;loop=false&amp;delayms=3000">Implementing Threaded Compositor : Igalia. Lightning&nbsp;Talk</a></li>
+</ul>
+</div>
+
+            </div>
+            <!-- /.entry-content -->
+    <hr/>
+    <section class="comments" id="comments">
+        <h2>Comments</h2>
+
+        <div id="disqus_thread"></div>
+        <script type="text/javascript">
+            /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+            var disqus_shortname = 'yoonlog'; // required: replace example with your forum shortname
+
+                    var disqus_identifier = 'introducing-threaded-compositor';
+                var disqus_url = 'http://blog.ryumiel.net/drafts/introducing-threaded-compositor.html';
+
+            var disqus_config = function () {
+                this.language = "en";
+            };
+
+            /* * * DON'T EDIT BELOW THIS LINE * * */
+            (function () {
+                var dsq = document.createElement('script');
+                dsq.type = 'text/javascript';
+                dsq.async = true;
+                dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+                (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+            })();
+        </script>
+        <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by
+            Disqus.</a></noscript>
+        <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+    </section>
+        </article>
+    </section>
+
+        </div>
+        <div class="col-sm-3 well well-sm" id="sidebar">
+
+<aside>
+    <section>
+        <ul class="list-group list-group-flush">
+                <li class="list-group-item"><h4><i class="fa fa-home fa-lg"></i><span class="icon-label">Social</span></h4>
+                  <ul class="list-group" id="social">
+                    <li class="list-group-item"><a href="http://kr.linkedin.com/pub/gwang-yoon-hwang/23/45/b10"><i class="fa fa-linkedin-square fa-lg"></i> linkedin</a></li>
+                    <li class="list-group-item"><a href="http://github.com/ryumiel"><i class="fa fa-github-square fa-lg"></i> github</a></li>
+                  </ul>
+                </li>
+
+
+
+                <li class="list-group-item"><a href="http://blog.ryumiel.net/tags/"><h4><i class="fa fa-tags fa-lg"></i><span class="icon-label">Tags</span></h4></a>
+                    <ul class="list-group " id="tags">
+                    </ul>
+                </li>    
+
+
+    <li class="list-group-item"><h4><i class="fa fa-external-link-square fa-lg"></i><span class="icon-label">Links</span></h4>
+      <ul class="list-group" id="links">
+        <li class="list-group-item">
+            <a href="http://www.igalia.com" target="_blank">
+                Igalia
+            </a>
+        </li>
+        <li class="list-group-item">
+            <a href="http://www.webkit.org" target="_blank">
+                WebKit
+            </a>
+        </li>
+        <li class="list-group-item">
+            <a href="http://planet.igalia.com" target="_blank">
+                Planet Igalia
+            </a>
+        </li>
+      </ul>
+    </li>
+
+        </ul>
+    </section>
+
+</aside>        </div>
+    </div>
+</div>
+<footer>
+   <div class="container">
+      <hr>
+      <div class="row">
+         <div class="col-xs-10">&copy;  Gwang Yoon Hwang
+            &middot; Powered by <a href="https://github.com/DandyDev/pelican-bootstrap3" target="_blank">pelican-bootstrap3</a>,
+            <a href="http://docs.getpelican.com/" target="_blank">Pelican</a>,
+            <a href="http://getbootstrap.com" target="_blank">Bootstrap</a>         </div>
+         <div class="col-xs-2"><p class="pull-right"><i class="fa fa-arrow-up"></i> <a href="#">Back to top</a></p></div>
+      </div>
+   </div>
+</footer>
+<script src="http://blog.ryumiel.net/theme/js/jquery.min.js"></script>
+
+<!-- Include all compiled plugins (below), or include individual files as needed -->
+<script src="http://blog.ryumiel.net/theme/js/bootstrap.min.js"></script>
+
+<!-- Enable responsive features in IE8 with Respond.js (https://github.com/scottjehl/Respond) -->
+<script src="http://blog.ryumiel.net/theme/js/respond.min.js"></script>
+
+    <!-- Disqus -->
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'yoonlog'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function () {
+            var s = document.createElement('script');
+            s.async = true;
+            s.type = 'text/javascript';
+            s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+            (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+        }());
+    </script>
+    <!-- End Disqus Code -->
+    <!-- Google Analytics -->
+    <script type="text/javascript">
+
+        var _gaq = _gaq || [];
+        _gaq.push(['_setAccount', 'UA-57166484-1']);
+        _gaq.push(['_trackPageview']);
+
+        (function () {
+            var ga = document.createElement('script');
+            ga.type = 'text/javascript';
+            ga.async = true;
+            ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+            var s = document.getElementsByTagName('script')[0];
+            s.parentNode.insertBefore(ga, s);
+        })();
+    </script>
+    <!-- End Google Analytics Code -->
+</body>
+</html>
