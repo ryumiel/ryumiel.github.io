@@ -10,10 +10,10 @@
 
 
 
-<link rel="canonical" href="http://blog.ryumiel.net/drafts/introducing-threaded-compositor.html">
+<link rel="canonical" href="http://blog.ryumiel.net/articles/introducing-threaded-compositor/">
 
         <meta name="author" content="Gwang Yoon Hwang" />
-        <meta name="keywords" content="WebKitGTK+,AcceleratedCompositing,Igalia" />
+        <meta name="keywords" content="WebKit,WebKitGTK+,AcceleratedCompositing,Igalia" />
         <meta name="description" content="Since CSS Animation appeared, the graphics performance of WebKit has become an important issue, especially in embedded systems world. Many users (including me) want fancy and stunning user interfaces, even in a small handset device which have very restricted CPU and GPU. Luckily, I could work through the years to ..." />
 
     <!-- Enable latex plugin -->
@@ -35,8 +35,8 @@
               title="YoonLog RSS Feed"/>
 
 
-        <link href="http://blog.ryumiel.net/feeds/webkit.atom.xml" type="application/atom+xml" rel="alternate"
-              title="YoonLog WebKit ATOM Feed"/>
+        <link href="http://blog.ryumiel.net/feeds/webengine.atom.xml" type="application/atom+xml" rel="alternate"
+              title="YoonLog WebEngine ATOM Feed"/>
 
 </head>
 <body>
@@ -58,6 +58,9 @@ YoonLog            </a>
                          <li><a href="http://blog.ryumiel.net/pages/about/">
                              About
                           </a></li>
+                        <li class="active">
+                            <a href="http://blog.ryumiel.net/category/webengine/">Webengine</a>
+                        </li>
             </ul>
             <ul class="nav navbar-nav navbar-right">
                 <li><a href="http://blog.ryumiel.net/archives.html"><i class="fa fa-th-list"></i><span class="icon-label">Archives</span></a></li>
@@ -75,7 +78,7 @@ YoonLog            </a>
         <article>
             <header class="page-header">
                 <h1>
-                    <a href="http://blog.ryumiel.net/drafts/introducing-threaded-compositor.html"
+                    <a href="http://blog.ryumiel.net/articles/introducing-threaded-compositor/"
                        rel="bookmark"
                        title="Permalink to Introducing Threaded Compositor">
                         Introducing Threaded&nbsp;Compositor
@@ -88,7 +91,7 @@ YoonLog            </a>
 <footer class="post-info">
     <span class="label label-default">Date</span>
     <span class="published">
-        <i class="fa fa-calendar"></i><time datetime="2014-11-29T15:20:00+09:00"> Sat 29 November 2014</time>
+        <i class="fa fa-calendar"></i><time datetime="2014-12-02T17:20:00+09:00"> Tue 02 December 2014</time>
     </span>
 
 
@@ -97,6 +100,8 @@ YoonLog            </a>
 
 
 <span class="label label-default">Tags</span>
+	<a href="http://blog.ryumiel.net/tag/webkit/">WebKit</a>
+        /
 	<a href="http://blog.ryumiel.net/tag/webkitgtk/">WebKitGTK+</a>
         /
 	<a href="http://blog.ryumiel.net/tag/acceleratedcompositing/">AcceleratedCompositing</a>
@@ -109,7 +114,8 @@ YoonLog            </a>
 <p>Luckily, I could work through the years to improve the graphics performance of <a class="reference external" href="http://webkit.org">WebKit</a>. And with the support from colleagues in <a class="reference external" href="http://www.igalia.com">Igalia</a>, I just finished to make the Threaded Compositor for <a class="reference external" href="http://webkitgtk.org">WebKitGTK+</a> as a review-ready&nbsp;state.</p>
 <p>The Threaded Compositor focused to improve the performance of WebKitGTK+ for <span class="caps">CSS</span> Animation using dedicated thread for compositing. But not only <span class="caps">CSS</span> Animation, it also provides a way to improve the performance of scrolling, scaling, rendering of canvas and video&nbsp;element.</p>
 <p>Before diving into the detail, it would be good to watch a video which introducing the Threaded&nbsp;Compositor.</p>
-<div class="vimeo" align="center"><iframe width="420" height="315" src="https://player.vimeo.com/video/113084228" frameborder="0"></iframe></div><p>The example used in this video can be accessed from <a class="reference external" href="http://ryumiel.github.io/spread">here</a>.
+<div class="youtube" align="center"><iframe width="420" height="315" src="https://www.youtube.com/embed/PJSsEiNasow" frameborder="0"></iframe></div><p><a class="reference external" href="http://youtu.be/PJSsEiNasow">Click here if a video does not appear above this&nbsp;text.</a></p>
+<p>The example used in this video can be accessed from <a class="reference external" href="http://ryumiel.github.io/spread">here</a>.
 I modified the <a class="reference external" href="http://github.com/MathiasPaumgarten/spread">original version</a> to run automatically for benchmarking&nbsp;purpose.</p>
 <p>Also, the current implementation of Threaded Compositor is available on the <a class="reference external" href="http://github.com/ryumiel/webkit-experimental/tree/threaded-compositor">github</a>. It is based on the WebKit&nbsp;r176538.</p>
 <div class="section" id="motivation">
@@ -118,16 +124,17 @@ I modified the <a class="reference external" href="http://github.com/MathiasPaum
 <p>Currently, several ports have already implemented a way to perform compositing off the main-thread. Coordinate Graphics, which is used by Qt and <span class="caps">EFL</span>, runs accelerated compositing in <span class="caps">UI</span> Process, and Chromium has implemented Compositor Thread that runs off the main render&nbsp;thread.</p>
 <p>Threaded Compositor is a threaded model of Coordinated Graphics. Unlike Coordinated Graphics, it composites contents in the dedicated thread of Web Process and doesn&#8217;t use complicated inter-process shareable textures. Because of that, it is much easier to implement other multi-threaded rendering techniques which is covered at <a class="reference internal" href="#compositing-the-media-and-the-canvas">Compositing the Media and the Canvas</a>.</p>
 <div class="section" id="off-the-main-thread-animation">
-<h3>Off-the-main thread&nbsp;Animation</h3>
+<h3>Off-the-main-thread&nbsp;Animation</h3>
 <p>Compositing a contents using OpenGL[<span class="caps">ES</span>] is a basic technique to accelerate <span class="caps">CSS</span> animations. However, even we are using <span class="caps">GPU</span> accelerated compositing, we can face a V-sync pitfall. ( This happens more frequently in the embedded systems. )
 Most of <span class="caps">GPU</span> uses V-sync (Vertical synchronization) to prevent <a class="reference external" href="http://en.wikipedia.org/wiki/Screen_tearing">the screen tearing</a> problem. It may blocks OpenGL&#8217;s SwapBuffer call at most 16 ms - if the monitor&#8217;s refresh rate is 60 Hz - until the next vblank&nbsp;interrupt.</p>
 <p>As you can see in the below diagram, this problem can waste the main-thread&#8217;s <span class="caps">CPU</span>&nbsp;time.</p>
 <img alt="A diagram to visualize rendering pipeline of the current WebKitGTK+." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Vsync2.png" />
-<p>The main-thread could render 4 frames in given time if there was no V-sync problem. But with the V-sync, it renders just 3 frames.
-It can be worse in embedded environments which have less powerful <span class="caps">CPU</span> and <span class="caps">GPU</span>.</p>
+<p>Again, when the main thread executing OpenGL[<span class="caps">ES</span>]&#8217;s SwapBuffer call, the driver should wait V-sync interrupt from the <span class="caps">DRM</span>/<span class="caps">KMS</span> module.
+The above diagram shows the worst case scenario. The main-thread could render 6 frames in given time if there was no V-sync problem. But with the V-sync, it renders just 4 frames.
+It can be happened more frequently in embedded environments which have less powerful <span class="caps">CPU</span> and <span class="caps">GPU</span>.</p>
 <img alt="A diagram to visualize rendering pipeline of the Threaded Compositor." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Vsync1.png" />
 <p>To overcome this problem, we uses a very common technique to use a different thread to update screen.
-As visualized at above diagram, the compositing thread takes all overheads from the V-sync problem. The main-thread can do other job while the compositing thread handles OpenGL&nbsp;calls.</p>
+As visualized at above diagram, the compositing thread takes all overheads from the V-sync problem. The main-thread can do other job while the compositing thread handles OpenGL calls. (Purple rectangles in the main-thread indicate inter-thread&nbsp;overheads.)</p>
 <p>Moreover, the Threaded Compositor accelerates <span class="caps">CSS</span> Animations,&nbsp;also.</p>
 <p>Because all of the layer properties (including GraphicsLayerAnimation) are passed to the compositing thread,
 it can make available to run <span class="caps">CSS</span> animations on the compositing thread without interrupting the main-thread.
@@ -293,6 +300,15 @@ I hope I can share updated the performance comparison using the embedded device&
 <p>In Coordinated Graphics, the collected state changes of the layer tree is encoded and passed to CoordinatedLayerTreeHostProxy in UIProcess. And CoordinatedGraphicsScene applies these state changes to its own TextureMapperLayer tree and renders these on the frame&nbsp;buffer.</p>
 <p>But in Threaded Compositor, these states are passed to CoordinatedGraphicsScene which owned by ThreadedCompositor. ThreadedCompositor has its own RunLoop and thread, all of the actual compositing operations are executed in the dedicated compositing thread in Web&nbsp;Process.</p>
 </div>
+<div class="section" id="current-status">
+<h2>Current&nbsp;Status</h2>
+<p>Most of re-factoring for Threaded Compositor in Coordinated Graphics side was done in the last&nbsp;year.</p>
+<p>However, upstreaming of Threaded Compositor was delayed to various issues.
+I had to simplify the design (which was quite complicate at that time) and resolve various issues Before starting upstreaming&nbsp;process.</p>
+<p>In this year, WebKitGTK+ decided to deprecate WebKit1. Because of that it was possible to make much less complicated design.
+Also, I fixed the Threaded Compositor not to break current behavior of WebKitGTK+ without fixed&nbsp;layout.</p>
+<p>I&#8217;m happy that I can start upstreaming process of this implementation, from now&nbsp;on.</p>
+</div>
 <div class="section" id="things-to-do">
 <h2>Things To&nbsp;Do</h2>
 <ul>
@@ -329,6 +345,13 @@ I hope I can share updated the performance comparison using the embedded device&
 </ul>
 </blockquote>
 </li>
+<li><p class="first">Check the performance of Threaded Compositor in the embedded&nbsp;device</p>
+<blockquote>
+<ul class="simple">
+<li>I hope I can share about it&nbsp;soon.</li>
+</ul>
+</blockquote>
+</li>
 <li><p class="first">Most of all,&nbsp;upstreaming!</p>
 </li>
 </ul>
@@ -346,7 +369,7 @@ I hope I can share updated the performance comparison using the embedded device&
             var disqus_shortname = 'yoonlog'; // required: replace example with your forum shortname
 
                     var disqus_identifier = 'introducing-threaded-compositor';
-                var disqus_url = 'http://blog.ryumiel.net/drafts/introducing-threaded-compositor.html';
+                var disqus_url = 'http://blog.ryumiel.net/articles/introducing-threaded-compositor/';
 
             var disqus_config = function () {
                 this.language = "en";
@@ -386,6 +409,26 @@ I hope I can share updated the performance comparison using the embedded device&
 
                 <li class="list-group-item"><a href="http://blog.ryumiel.net/tags/"><h4><i class="fa fa-tags fa-lg"></i><span class="icon-label">Tags</span></h4></a>
                     <ul class="list-group " id="tags">
+                        <li class="list-group-item tag-4">
+                            <a href="http://blog.ryumiel.net/tag/webkitgtk/">
+                                WebKitGTK+
+                            </a>
+                        </li>
+                        <li class="list-group-item tag-4">
+                            <a href="http://blog.ryumiel.net/tag/acceleratedcompositing/">
+                                AcceleratedCompositing
+                            </a>
+                        </li>
+                        <li class="list-group-item tag-4">
+                            <a href="http://blog.ryumiel.net/tag/igalia/">
+                                Igalia
+                            </a>
+                        </li>
+                        <li class="list-group-item tag-4">
+                            <a href="http://blog.ryumiel.net/tag/webkit/">
+                                WebKit
+                            </a>
+                        </li>
                     </ul>
                 </li>    
 
@@ -420,7 +463,7 @@ I hope I can share updated the performance comparison using the embedded device&
    <div class="container">
       <hr>
       <div class="row">
-         <div class="col-xs-10">&copy;  Gwang Yoon Hwang
+         <div class="col-xs-10">&copy; 2014 Gwang Yoon Hwang
             &middot; Powered by <a href="https://github.com/DandyDev/pelican-bootstrap3" target="_blank">pelican-bootstrap3</a>,
             <a href="http://docs.getpelican.com/" target="_blank">Pelican</a>,
             <a href="http://getbootstrap.com" target="_blank">Bootstrap</a>         </div>
