@@ -111,61 +111,61 @@ YoonLog            </a>
 </footer><!-- /.post-info -->                    </div>
                 </div>
                 <p>Since <span class="caps">CSS</span> Animation appeared, the graphics performance of WebKit has become an important issue, especially in embedded systems world. Many users (including me) want fancy and stunning user interfaces, even in a small handset device which have very restricted <span class="caps">CPU</span> and <span class="caps">GPU</span>.</p>
-<p>Luckily, I could work through the years to improve the graphics performance of <a class="reference external" href="http://webkit.org">WebKit</a>. And with the support from colleagues in <a class="reference external" href="http://www.igalia.com">Igalia</a>, I just finished to make the Threaded Compositor for <a class="reference external" href="http://webkitgtk.org">WebKitGTK+</a> as a review-ready&nbsp;state.</p>
-<p>The Threaded Compositor focused to improve the performance of WebKitGTK+ for <span class="caps">CSS</span> Animation using dedicated thread for compositing. But not only <span class="caps">CSS</span> Animation, it also provides a way to improve the performance of scrolling, scaling, rendering of canvas and video&nbsp;element.</p>
-<p>Before diving into the detail, it would be good to watch a video which introducing the Threaded&nbsp;Compositor.</p>
-<div class="youtube" align="center"><iframe width="420" height="315" src="https://www.youtube.com/embed/PJSsEiNasow" frameborder="0"></iframe></div><p><a class="reference external" href="http://youtu.be/PJSsEiNasow">Click here if a video does not appear above this&nbsp;text.</a></p>
+<p>Luckily, I could work through the years to improve the graphics performance of <a class="reference external" href="http://webkit.org">WebKit</a>. And with the support from colleagues in <a class="reference external" href="http://www.igalia.com">Igalia</a>, I just finished to make the Threaded Compositor for <a class="reference external" href="http://webkitgtk.org">WebKitGTK+</a> as a review-ready state.</p>
+<p>The Threaded Compositor focused to improve the performance of WebKitGTK+ for <span class="caps">CSS</span> Animation using dedicated thread for compositing. But not only <span class="caps">CSS</span> Animation, it also provides a way to improve the performance of scrolling, scaling, rendering of canvas and video element.</p>
+<p>Before diving into the detail, it would be good to watch a video which introducing the Threaded Compositor.</p>
+<div align="center" class="youtube"><iframe frameborder="0" height="315" src="https://www.youtube.com/embed/PJSsEiNasow" width="420"></iframe></div><p><a class="reference external" href="http://youtu.be/PJSsEiNasow">Click here if a video does not appear above this text.</a></p>
 <p>The example used in this video can be accessed from <a class="reference external" href="http://ryumiel.github.io/spread">here</a>.
-I modified the <a class="reference external" href="http://github.com/MathiasPaumgarten/spread">original version</a> to run automatically for benchmarking&nbsp;purpose.</p>
-<p>Also, the current implementation of Threaded Compositor is available on the <a class="reference external" href="http://github.com/ryumiel/webkit-experimental/tree/threaded-compositor">github</a>. It is based on the WebKit&nbsp;r176538.</p>
+I modified the <a class="reference external" href="http://github.com/MathiasPaumgarten/spread">original version</a> to run automatically for benchmarking purpose.</p>
+<p>Also, the current implementation of Threaded Compositor is available on the <a class="reference external" href="http://github.com/ryumiel/webkit-experimental/tree/threaded-compositor">github</a>. It is based on the WebKit r176538.</p>
 <div class="section" id="motivation">
 <h2>Motivation</h2>
-<p>The main-thread is where everything gets executed, including layout, JavaScript execution, and other heavy operations. Thus, running accelerated compositing in the main-thread severely limits responsiveness and rendering performance. By having a separate thread for compositing, we can bring a significant performance improvement in scrolling, zooming, and&nbsp;rendering.</p>
-<p>Currently, several ports have already implemented a way to perform compositing off the main-thread. Coordinate Graphics, which is used by Qt and <span class="caps">EFL</span>, runs accelerated compositing in <span class="caps">UI</span> Process, and Chromium has implemented Compositor Thread that runs off the main render&nbsp;thread.</p>
-<p>Threaded Compositor is a threaded model of Coordinated Graphics. Unlike Coordinated Graphics, it composites contents in the dedicated thread of Web Process and doesn&#8217;t use complicated inter-process shareable textures. Because of that, it is much easier to implement other multi-threaded rendering techniques which is covered at <a class="reference internal" href="#compositing-the-media-and-the-canvas">Compositing the Media and the Canvas</a>.</p>
+<p>The main-thread is where everything gets executed, including layout, JavaScript execution, and other heavy operations. Thus, running accelerated compositing in the main-thread severely limits responsiveness and rendering performance. By having a separate thread for compositing, we can bring a significant performance improvement in scrolling, zooming, and rendering.</p>
+<p>Currently, several ports have already implemented a way to perform compositing off the main-thread. Coordinate Graphics, which is used by Qt and <span class="caps">EFL</span>, runs accelerated compositing in <span class="caps">UI</span> Process, and Chromium has implemented Compositor Thread that runs off the main render thread.</p>
+<p>Threaded Compositor is a threaded model of Coordinated Graphics. Unlike Coordinated Graphics, it composites contents in the dedicated thread of Web Process and doesn’t use complicated inter-process shareable textures. Because of that, it is much easier to implement other multi-threaded rendering techniques which is covered at <a class="reference internal" href="#compositing-the-media-and-the-canvas">Compositing the Media and the Canvas</a>.</p>
 <div class="section" id="off-the-main-thread-animation">
-<h3>Off-the-main-thread&nbsp;Animation</h3>
+<h3>Off-the-main-thread Animation</h3>
 <p>Compositing a contents using OpenGL[<span class="caps">ES</span>] is a basic technique to accelerate <span class="caps">CSS</span> animations. However, even we are using <span class="caps">GPU</span> accelerated compositing, we can face a V-sync pitfall. ( This happens more frequently in the embedded systems. )
-Most of <span class="caps">GPU</span> uses V-sync (Vertical synchronization) to prevent <a class="reference external" href="http://en.wikipedia.org/wiki/Screen_tearing">the screen tearing</a> problem. It may blocks OpenGL&#8217;s SwapBuffer call at most 16 ms - if the monitor&#8217;s refresh rate is 60 Hz - until the next vblank&nbsp;interrupt.</p>
-<p>As you can see in the below diagram, this problem can waste the main-thread&#8217;s <span class="caps">CPU</span>&nbsp;time.</p>
-<img alt="A diagram to visualize rendering pipeline of the current WebKitGTK+." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Vsync2.png" />
-<p>Again, when the main thread executing OpenGL[<span class="caps">ES</span>]&#8217;s SwapBuffer call, the driver should wait V-sync interrupt from the <span class="caps">DRM</span>/<span class="caps">KMS</span> module.
+Most of <span class="caps">GPU</span> uses V-sync (Vertical synchronization) to prevent <a class="reference external" href="http://en.wikipedia.org/wiki/Screen_tearing">the screen tearing</a> problem. It may blocks OpenGL’s SwapBuffer call at most 16 ms - if the monitor’s refresh rate is 60 Hz - until the next vblank interrupt.</p>
+<p>As you can see in the below diagram, this problem can waste the main-thread’s <span class="caps">CPU</span> time.</p>
+<img alt="A diagram to visualize rendering pipeline of the current WebKitGTK+." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Vsync2.png" style="width: 100%;width: 2134px; height: auto; max-width: 100%;"/>
+<p>Again, when the main thread executing OpenGL[<span class="caps">ES</span>]’s SwapBuffer call, the driver should wait V-sync interrupt from the <span class="caps">DRM</span>/<span class="caps">KMS</span> module.
 The above diagram shows the worst case scenario. The main-thread could render 6 frames in given time if there was no V-sync problem. But with the V-sync, it renders just 4 frames.
 It can be happened more frequently in embedded environments which have less powerful <span class="caps">CPU</span> and <span class="caps">GPU</span>.</p>
-<img alt="A diagram to visualize rendering pipeline of the Threaded Compositor." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Vsync1.png" />
+<img alt="A diagram to visualize rendering pipeline of the Threaded Compositor." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Vsync1.png" style="width: 100%;width: 2134px; height: auto; max-width: 100%;"/>
 <p>To overcome this problem, we uses a very common technique to use a different thread to update screen.
-As visualized at above diagram, the compositing thread takes all overheads from the V-sync problem. The main-thread can do other job while the compositing thread handles OpenGL calls. (Purple rectangles in the main-thread indicate inter-thread&nbsp;overheads.)</p>
-<p>Moreover, the Threaded Compositor accelerates <span class="caps">CSS</span> Animations,&nbsp;also.</p>
+As visualized at above diagram, the compositing thread takes all overheads from the V-sync problem. The main-thread can do other job while the compositing thread handles OpenGL calls. (Purple rectangles in the main-thread indicate inter-thread overheads.)</p>
+<p>Moreover, the Threaded Compositor accelerates <span class="caps">CSS</span> Animations, also.</p>
 <p>Because all of the layer properties (including GraphicsLayerAnimation) are passed to the compositing thread,
 it can make available to run <span class="caps">CSS</span> animations on the compositing thread without interrupting the main-thread.
-When CoordinatedGraphicsScene finishes to render a scene, it will check is there any running animations in the its layer tree. If there are active one, it sets a timer to render a scene&nbsp;itself.</p>
-<p>Attached sequence diagram can be helpful to understand this&nbsp;idea.</p>
-<a class="reference external image-reference" href="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Update_Animation.png"><img alt="A sequence diagram of the updating animation in the Threaded Compositor" class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Update_Animation.png" /></a>
+When CoordinatedGraphicsScene finishes to render a scene, it will check is there any running animations in the its layer tree. If there are active one, it sets a timer to render a scene itself.</p>
+<p>Attached sequence diagram can be helpful to understand this idea.</p>
+<a class="reference external image-reference" href="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Update_Animation.png"><img alt="A sequence diagram of the updating animation in the Threaded Compositor" class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Update_Animation.png" style="width: 100%;width: 1920px; height: auto; max-width: 100%;"/></a>
 </div>
 <div class="section" id="scrolling-and-scaling">
-<h3>Scrolling and&nbsp;Scaling</h3>
-<p>Scrolling and Scaling are also expensive job especially in the embedded&nbsp;device.</p>
-<p>When we are scaling a web page, WebCore needs to update whole layout of its web page. As all of us knows, it is really expensive operation in the embedded&nbsp;platform.</p>
-<img alt="A simplified diagram to visualize scaling procedure of the current WebKitGTK+." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Simplified_Normal_Scaling.png" />
-<p>Let&#8217;s assume that a user tries to scale a web page using a two finger gesture. The WebCore in the Web Process tries to produce scaled web page with a exact layout as soon as possible. However, if it is a embedded device, it can need more than 100 ms - 10&nbsp;fps.</p>
-<p>The Threaded Compositor renders a web page with a requested scale using its cached layer tree. By doing like that, we can give a immediate visual feed back to the user. And re-layouted web page will be updated&nbsp;later.</p>
-<img alt="A simplified diagram to visualize scaling procedure of the Threaded Compositor." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Simplified_Threaded_Scaling.png" />
-<p>It is similar in the scrolling operation. When we are scrolling the web page, this operation doesn&#8217;t need a huge re-layout operation.
-But it needs re-painting and bliting operation to update a web&nbsp;page.</p>
-<img alt="A simplified diagram to visualize scrolling procedure of the current WebKitGTK+." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Simplified_Normal_Scrolling.png" />
+<h3>Scrolling and Scaling</h3>
+<p>Scrolling and Scaling are also expensive job especially in the embedded device.</p>
+<p>When we are scaling a web page, WebCore needs to update whole layout of its web page. As all of us knows, it is really expensive operation in the embedded platform.</p>
+<img alt="A simplified diagram to visualize scaling procedure of the current WebKitGTK+." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Simplified_Normal_Scaling.png" style="width: 100%;width: 1081px; height: auto; max-width: 100%;"/>
+<p>Let’s assume that a user tries to scale a web page using a two finger gesture. The WebCore in the Web Process tries to produce scaled web page with a exact layout as soon as possible. However, if it is a embedded device, it can need more than 100 ms - 10 fps.</p>
+<p>The Threaded Compositor renders a web page with a requested scale using its cached layer tree. By doing like that, we can give a immediate visual feed back to the user. And re-layouted web page will be updated later.</p>
+<img alt="A simplified diagram to visualize scaling procedure of the Threaded Compositor." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Simplified_Threaded_Scaling.png" style="width: 100%;width: 1397px; height: auto; max-width: 100%;"/>
+<p>It is similar in the scrolling operation. When we are scrolling the web page, this operation doesn’t need a huge re-layout operation.
+But it needs re-painting and bliting operation to update a web page.</p>
+<img alt="A simplified diagram to visualize scrolling procedure of the current WebKitGTK+." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Simplified_Normal_Scrolling.png" style="width: 100%;width: 1261px; height: auto; max-width: 100%;"/>
 <p>Because the Threaded Compositor uses TILED_BACKING_STORE, it can render the scrolled web page with cached tiles with a minimal latency.
-During ThreadedCompositor renders a web page, the main-thread scrolls &quot;actual&quot; view. Whenever the main-thread finishes &quot;actual&quot; scroll, these changes are collected by CompositingCoordinator. And these changes are passed to the ThreadedCompositor to update the&nbsp;view.</p>
-<img alt="A simplified diagram to visualize scrolling procedure of the Threaded Compositor." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Simplified_Threaded_Scrolling.png" />
-<p>Unfortunately, these optimization is only supported when we are using fixed layout. To support this without fixed layout, we need to refactor TILED_BACKING_STORE in WebKit and implement proper overlay scrollbars in&nbsp;WebKitGTK+.</p>
+During ThreadedCompositor renders a web page, the main-thread scrolls "actual" view. Whenever the main-thread finishes "actual" scroll, these changes are collected by CompositingCoordinator. And these changes are passed to the ThreadedCompositor to update the view.</p>
+<img alt="A simplified diagram to visualize scrolling procedure of the Threaded Compositor." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Simplified_Threaded_Scrolling.png" style="width: 100%;width: 1563px; height: auto; max-width: 100%;"/>
+<p>Unfortunately, these optimization is only supported when we are using fixed layout. To support this without fixed layout, we need to refactor TILED_BACKING_STORE in WebKit and implement proper overlay scrollbars in WebKitGTK+.</p>
 </div>
 <div class="section" id="compositing-the-media-and-the-canvas">
-<h3>Compositing the Media and the&nbsp;Canvas</h3>
+<h3>Compositing the Media and the Canvas</h3>
 <p>Not only <span class="caps">CSS3</span> Animation and scaling but also the video and canvas can be accelerated by the Threaded Compositor.
-Because it is little bit out of scope of this post - Because it is not implemented for upstreaming - I&#8217;ll only describe about it briefly&nbsp;here.</p>
-<p>In the TextureMapper, Media (Plugins, Video element, &#8230;) and Canvas (WebGL, 2D Canvas) can be rendered by implementing TextureMapperPlatformLayer. Most important interface of the TextureMapperPlatformLayer is TextureMapperPlatformLayerClient::setPlatformLayerNeedsDisplay which requests the compositor to composite the its&nbsp;contents.</p>
-<p>If the actual renderer of a Media and a Canvas element runs on off-the-main-thread, it is possible to bypass the main-thread entirely. The renderer can calls TextureMapperPlatformLayerClient::setPlatformLayerNeedsDisplay when it updates its result from its own thread. And compositing thread will composite the result without using the&nbsp;main-thread.</p>
-<img alt="A diagram to visualize rendering pipeline of for Canvas and Video." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Simplified_Platform_Layers.png" />
-<p>Also, if the target platform supports <a class="reference external" href="https://www.khronos.org/registry/egl/extensions/KHR/EGL_KHR_stream_consumer_gltexture.txt">streams of texture</a>, we can avoid pipeline hazards when drawing video layers in modern mobile GPUs which uses tile based&nbsp;rendering.</p>
+Because it is little bit out of scope of this post - Because it is not implemented for upstreaming - I’ll only describe about it briefly here.</p>
+<p>In the TextureMapper, Media (Plugins, Video element, …) and Canvas (WebGL, 2D Canvas) can be rendered by implementing TextureMapperPlatformLayer. Most important interface of the TextureMapperPlatformLayer is TextureMapperPlatformLayerClient::setPlatformLayerNeedsDisplay which requests the compositor to composite the its contents.</p>
+<p>If the actual renderer of a Media and a Canvas element runs on off-the-main-thread, it is possible to bypass the main-thread entirely. The renderer can calls TextureMapperPlatformLayerClient::setPlatformLayerNeedsDisplay when it updates its result from its own thread. And compositing thread will composite the result without using the main-thread.</p>
+<img alt="A diagram to visualize rendering pipeline of for Canvas and Video." class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Simplified_Platform_Layers.png" style="width: 100%;width: 1368px; height: auto; max-width: 100%;"/>
+<p>Also, if the target platform supports <a class="reference external" href="https://www.khronos.org/registry/egl/extensions/KHR/EGL_KHR_stream_consumer_gltexture.txt">streams of texture</a>, we can avoid pipeline hazards when drawing video layers in modern mobile GPUs which uses tile based rendering.</p>
 </div>
 </div>
 <div class="section" id="performance">
@@ -173,44 +173,44 @@ Because it is little bit out of scope of this post - Because it is not implement
 <p>This performance comparison was presented in Linux.Conf.<span class="caps">AU</span> 2013.
 It is based on pretty old implementation but it shows meaningful performance improvement compare to plain TextureMapper method.
 I could not regenerate this result using my current laptop because it is too fast to make stressed condition.
-I hope I can share updated the performance comparison using the embedded device&nbsp;soon.</p>
+I hope I can share updated the performance comparison using the embedded device soon.</p>
 <ul>
 <li><p class="first">Test Cases <a class="footnote-reference" href="#id2" id="id1">[*]</a></p>
 <blockquote>
 <ul>
-<li><p class="first">leaves&nbsp;n</p>
+<li><p class="first">leaves n</p>
 <blockquote>
 <ul class="simple">
-<li>Modified the famous accelerated compositing example, <a class="reference external" href="https://www.webkit.org/blog-files/leaves/">WebKit Leaves</a>, to draw n&nbsp;leaves.</li>
+<li>Modified the famous accelerated compositing example, <a class="reference external" href="https://www.webkit.org/blog-files/leaves/">WebKit Leaves</a>, to draw n leaves.</li>
 </ul>
 </blockquote>
 </li>
-<li><p class="first">3DCube&nbsp;n</p>
+<li><p class="first">3DCube n</p>
 <blockquote>
 <ul class="simple">
-<li>n cubes rotating using <span class="caps">CSS3</span>&nbsp;animation.</li>
+<li>n cubes rotating using <span class="caps">CSS3</span> animation.</li>
 </ul>
 </blockquote>
 </li>
 </ul>
 </blockquote>
 </li>
-<li><p class="first">Test&nbsp;Environment</p>
+<li><p class="first">Test Environment</p>
 <blockquote>
 <ul class="simple">
-<li>Prototype of Threaded Compositor Implementation based on&nbsp;r134883</li>
-<li>WebKit2 Gtk+&nbsp;r140386</li>
-<li>Intel Core i5-2400 3.10Ghz, Geforce <span class="caps">GTS450</span>, Ubuntu 12.04&nbsp;x86_64</li>
+<li>Prototype of Threaded Compositor Implementation based on r134883</li>
+<li>WebKit2 Gtk+ r140386</li>
+<li>Intel Core i5-2400 3.10Ghz, Geforce <span class="caps">GTS450</span>, Ubuntu 12.04 x86_64</li>
 </ul>
 </blockquote>
 </li>
 </ul>
 <table border="1" class="docutils">
 <colgroup>
-<col width="19%" />
-<col width="36%" />
-<col width="28%" />
-<col width="17%" />
+<col width="19%"></col>
+<col width="36%"></col>
+<col width="28%"></col>
+<col width="17%"></col>
 </colgroup>
 <thead valign="bottom">
 <tr><th class="head">Tests</th>
@@ -248,111 +248,111 @@ I hope I can share updated the performance comparison using the embedded device&
 </tbody>
 </table>
 <table class="docutils footnote" frame="void" id="id2" rules="none">
-<colgroup><col class="label" /><col /></colgroup>
+<colgroup><col class="label"></col><col></col></colgroup>
 <tbody valign="top">
 <tr><td class="label"><a class="fn-backref" href="#id1">[*]</a></td><td>These tests are made by <a class="reference external" href="http://company100.com">Company 100</a></td></tr>
 </tbody>
 </table>
 </div>
 <div class="section" id="class-diagram">
-<h2>Class&nbsp;Diagram</h2>
-<p>I made this diagram to help my understanding during the implementation, but It would be good to share to help others who are interested in&nbsp;it.</p>
-<a class="reference external image-reference" href="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png"><img alt="A class diagram of the Threaded Compositor" class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png" /></a>
+<h2>Class Diagram</h2>
+<p>I made this diagram to help my understanding during the implementation, but It would be good to share to help others who are interested in it.</p>
+<a class="reference external image-reference" href="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png"><img alt="A class diagram of the Threaded Compositor" class="align-center" src="http://blog.ryumiel.net/images/articles/Threaded_Compositor_Design_Threaded_Compositor.png" style="width: 100%;width: 1581px; height: auto; max-width: 100%;"/></a>
 <ul>
 <li><p class="first">CompositingCoordinator</p>
 <blockquote>
-<p>A class takes the responsibility of managing compositing resources in the&nbsp;main-thread.</p>
+<p>A class takes the responsibility of managing compositing resources in the main-thread.</p>
 </blockquote>
 </li>
 <li><p class="first">ThreadedCompositor</p>
 <blockquote>
-<p>This class has a dedicate thread for compositing. It owns ViewportController and CoordinatedGraphicsScene to render scene on the actual&nbsp;surface.</p>
+<p>This class has a dedicate thread for compositing. It owns ViewportController and CoordinatedGraphicsScene to render scene on the actual surface.</p>
 </blockquote>
 </li>
 <li><p class="first">ThreadedCoordinatedLayerTreeHost</p>
 <blockquote>
-<p>A concrete class of LayerTreeHost and CompositingCoordinator::Client for CoordinatedGraphics. And it has ThreadedCompositor to use the Threaded&nbsp;Compositor.</p>
+<p>A concrete class of LayerTreeHost and CompositingCoordinator::Client for CoordinatedGraphics. And it has ThreadedCompositor to use the Threaded Compositor.</p>
 </blockquote>
 </li>
 <li><p class="first">CoordinatedGraphicsScene</p>
 <blockquote>
-<p>A class which has a complete scene graph and rendering functionality. It synchronizes its own scene graph with a graphics layer tree in compositing&nbsp;coordinator.</p>
+<p>A class which has a complete scene graph and rendering functionality. It synchronizes its own scene graph with a graphics layer tree in compositing coordinator.</p>
 </blockquote>
 </li>
 <li><p class="first">ThreadSafeCoordinatedSurface</p>
 <blockquote>
-<p>This class implements a surface using ImageBuffer as a backend to use in the Web&nbsp;Process.</p>
+<p>This class implements a surface using ImageBuffer as a backend to use in the Web Process.</p>
 </blockquote>
 </li>
 <li><p class="first">TextureMapperLayer</p>
 <blockquote>
-<p>It has actual properties to render a&nbsp;layer.</p>
+<p>It has actual properties to render a layer.</p>
 </blockquote>
 </li>
 <li><p class="first">ViewportController</p>
 <blockquote>
-<p>This class is responsible to handle scale factor and scrolling position in the compositing&nbsp;thread.</p>
+<p>This class is responsible to handle scale factor and scrolling position in the compositing thread.</p>
 </blockquote>
 </li>
 </ul>
-<p>In the main-thread, all of the visual changes of each GraphicsLayer are passed to CompositingCoordinator via CoordinatedGraphicsLayer. And CompositingCoordinator collects state changes from the GraphicsLayer tree when it is requested to do&nbsp;so.</p>
-<p>From this point, Threaded Compositor and Coordinated Graphics behaves&nbsp;differently.</p>
-<p>In Coordinated Graphics, the collected state changes of the layer tree is encoded and passed to CoordinatedLayerTreeHostProxy in UIProcess. And CoordinatedGraphicsScene applies these state changes to its own TextureMapperLayer tree and renders these on the frame&nbsp;buffer.</p>
-<p>But in Threaded Compositor, these states are passed to CoordinatedGraphicsScene which owned by ThreadedCompositor. ThreadedCompositor has its own RunLoop and thread, all of the actual compositing operations are executed in the dedicated compositing thread in Web&nbsp;Process.</p>
+<p>In the main-thread, all of the visual changes of each GraphicsLayer are passed to CompositingCoordinator via CoordinatedGraphicsLayer. And CompositingCoordinator collects state changes from the GraphicsLayer tree when it is requested to do so.</p>
+<p>From this point, Threaded Compositor and Coordinated Graphics behaves differently.</p>
+<p>In Coordinated Graphics, the collected state changes of the layer tree is encoded and passed to CoordinatedLayerTreeHostProxy in UIProcess. And CoordinatedGraphicsScene applies these state changes to its own TextureMapperLayer tree and renders these on the frame buffer.</p>
+<p>But in Threaded Compositor, these states are passed to CoordinatedGraphicsScene which owned by ThreadedCompositor. ThreadedCompositor has its own RunLoop and thread, all of the actual compositing operations are executed in the dedicated compositing thread in Web Process.</p>
 </div>
 <div class="section" id="current-status">
-<h2>Current&nbsp;Status</h2>
-<p>Most of re-factoring for Threaded Compositor in Coordinated Graphics side was done in the last&nbsp;year.</p>
+<h2>Current Status</h2>
+<p>Most of re-factoring for Threaded Compositor in Coordinated Graphics side was done in the last year.</p>
 <p>However, upstreaming of Threaded Compositor was delayed to various issues.
-I had to simplify the design (which was quite complicate at that time) and resolve various issues Before starting upstreaming&nbsp;process.</p>
+I had to simplify the design (which was quite complicate at that time) and resolve various issues Before starting upstreaming process.</p>
 <p>In this year, WebKitGTK+ decided to deprecate WebKit1. Because of that it was possible to make much less complicated design.
-Also, I fixed the Threaded Compositor not to break current behavior of WebKitGTK+ without fixed&nbsp;layout.</p>
-<p>I&#8217;m happy that I can start upstreaming process of this implementation, from now&nbsp;on.</p>
+Also, I fixed the Threaded Compositor not to break current behavior of WebKitGTK+ without fixed layout.</p>
+<p>I’m happy that I can start upstreaming process of this implementation, from now on.</p>
 </div>
 <div class="section" id="things-to-do">
-<h2>Things To&nbsp;Do</h2>
+<h2>Things To Do</h2>
 <ul>
-<li><p class="first">Reduce memory uses when updating&nbsp;texture</p>
+<li><p class="first">Reduce memory uses when updating texture</p>
 <blockquote>
 <ul class="simple">
-<li>RenderObjects draw its contents to UpdateAtlas to pass bitmaps to the compositing thread. However, The size of each UpdateAtlas is <span class="caps">4MB</span>. It is quite big memory consumption in the embedded device. Still, I couldn&#8217;t find a way to solve it without using proprietary <span class="caps">GPU</span>&nbsp;driver.</li>
+<li>RenderObjects draw its contents to UpdateAtlas to pass bitmaps to the compositing thread. However, The size of each UpdateAtlas is <span class="caps">4MB</span>. It is quite big memory consumption in the embedded device. Still, I couldn’t find a way to solve it without using proprietary <span class="caps">GPU</span> driver.</li>
 </ul>
 </blockquote>
 </li>
 <li><p class="first">Avoid pipeline hazards in the mobile <span class="caps">GPU</span></p>
 <blockquote>
 <ul class="simple">
-<li>Modern mobile GPUs uses tile-based [deferred] rendering. These GPUs can render multiple frames (~ 3 frames) concurrently to overcome its low performance. It is well working technique in the game industry which uses static&nbsp;textures.</li>
-<li>In the WebKit, most of textures are dynamically generated. Whenever we are updating a texture using texSubImage2D, <span class="caps">GPU</span> would be stalled because it would be used in the previous rendering&nbsp;call.</li>
-<li>To avoid this problem, chromium uses <a class="reference external" href="http://src.chromium.org/viewvc/chrome/trunk/src/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_texture_mailbox.txt">producer/consumer model of&nbsp;texture</a></li>
+<li>Modern mobile GPUs uses tile-based [deferred] rendering. These GPUs can render multiple frames (~ 3 frames) concurrently to overcome its low performance. It is well working technique in the game industry which uses static textures.</li>
+<li>In the WebKit, most of textures are dynamically generated. Whenever we are updating a texture using texSubImage2D, <span class="caps">GPU</span> would be stalled because it would be used in the previous rendering call.</li>
+<li>To avoid this problem, chromium uses <a class="reference external" href="http://src.chromium.org/viewvc/chrome/trunk/src/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_texture_mailbox.txt">producer/consumer model of texture</a></li>
 </ul>
 <ul class="simple">
-<li>We can create a wrapper for a texture which provides multiple buffering. In this way we can avoid the pipeline&nbsp;hazards.</li>
+<li>We can create a wrapper for a texture which provides multiple buffering. In this way we can avoid the pipeline hazards.</li>
 </ul>
 </blockquote>
 </li>
-<li><p class="first">Reduce the maintenance&nbsp;burden</p>
+<li><p class="first">Reduce the maintenance burden</p>
 <blockquote>
 <ul class="simple">
-<li>we need to re-factor Coordinated Graphics to share codes with Apple&#8217;s <span class="caps">UI</span> <span class="caps">SIDE</span> <span class="caps">COMPOSITING</span> codes. Most of messages are duplicated. So it can be easily done by defining platform specific&nbsp;parts.</li>
+<li>we need to re-factor Coordinated Graphics to share codes with Apple’s <span class="caps">UI</span> <span class="caps">SIDE</span> <span class="caps">COMPOSITING</span> codes. Most of messages are duplicated. So it can be easily done by defining platform specific parts.</li>
 </ul>
 </blockquote>
 </li>
-<li><p class="first">Accelerate the performance of 2D Canvas element and Video&nbsp;element</p>
+<li><p class="first">Accelerate the performance of 2D Canvas element and Video element</p>
 <blockquote>
 <ul class="simple">
 <li>It can be improved (relatively) easily as I described at <a class="reference internal" href="#compositing-the-media-and-the-canvas">Compositing the Media and the Canvas</a>.</li>
 </ul>
 </blockquote>
 </li>
-<li><p class="first">Check the performance of Threaded Compositor in the embedded&nbsp;device</p>
+<li><p class="first">Check the performance of Threaded Compositor in the embedded device</p>
 <blockquote>
 <ul class="simple">
-<li>I hope I can share about it&nbsp;soon.</li>
+<li>I hope I can share about it soon.</li>
 </ul>
 </blockquote>
 </li>
-<li><p class="first">Most of all,&nbsp;upstreaming!</p>
+<li><p class="first">Most of all, upstreaming!</p>
 </li>
 </ul>
 </div>
@@ -410,23 +410,23 @@ Also, I fixed the Threaded Compositor not to break current behavior of WebKitGTK
                 <li class="list-group-item"><a href="http://blog.ryumiel.net/tags/"><h4><i class="fa fa-tags fa-lg"></i><span class="icon-label">Tags</span></h4></a>
                     <ul class="list-group " id="tags">
                         <li class="list-group-item tag-4">
-                            <a href="http://blog.ryumiel.net/tag/webkitgtk/">
-                                WebKitGTK+
-                            </a>
-                        </li>
-                        <li class="list-group-item tag-4">
                             <a href="http://blog.ryumiel.net/tag/acceleratedcompositing/">
                                 AcceleratedCompositing
                             </a>
                         </li>
                         <li class="list-group-item tag-4">
-                            <a href="http://blog.ryumiel.net/tag/igalia/">
-                                Igalia
+                            <a href="http://blog.ryumiel.net/tag/webkitgtk/">
+                                WebKitGTK+
                             </a>
                         </li>
                         <li class="list-group-item tag-4">
                             <a href="http://blog.ryumiel.net/tag/webkit/">
                                 WebKit
+                            </a>
+                        </li>
+                        <li class="list-group-item tag-4">
+                            <a href="http://blog.ryumiel.net/tag/igalia/">
+                                Igalia
                             </a>
                         </li>
                     </ul>
